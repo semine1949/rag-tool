@@ -1,0 +1,125 @@
+# ============================================================================
+# RAG向量入库工具 - 应用配置
+# ============================================================================
+# 本文件中所有标注 TODO 的配置项需要根据实际环境填写
+# ============================================================================
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: rag-vector-tool
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 500MB
+
+# ==================== RAG核心配置 ====================
+rag:
+  # ---------- OCR配置 ----------
+  ocr:
+    # TODO: 配置Tesseract OCR数据路径
+    #   Windows示例: D:/tessdata
+    #   Linux示例: /usr/share/tesseract-ocr/5/tessdata
+    #   Docker中: /usr/share/tesseract-ocr/4.00/tessdata
+    data-path: D:/tessdata
+
+    # TODO: 配置OCR识别语言（多个语言用+号连接）
+    #   chi_sim = 中文简体, eng = 英文, chi_tra = 中文繁体
+    #   示例: chi_sim+eng
+    language: chi_sim+eng
+
+  # ---------- Embedding模型配置 ----------
+  embedding:
+    # TODO: 当前使用的模型类型: ollama / openai / tongyi / onnx
+    type: ollama
+
+    # TODO: OpenAI Embedding配置（当 type=openai 时生效）
+    openai:
+      # TODO: 填入OpenAI API Key（格式: sk-xxx）
+      api-key: sk-xxx
+      # TODO: 填入OpenAI Base URL（默认: https://api.openai.com/v1）
+      base-url: https://api.openai.com/v1
+      # TODO: 选择模型: text-embedding-3-small / text-embedding-3-large / text-embedding-ada-002
+      model: text-embedding-3-small
+
+    # Ollama本地Embedding配置（当 type=ollama 时生效）
+    ollama:
+      # TODO: 确认Ollama服务地址（默认: http://localhost:11434）
+      base-url: http://localhost:11434
+      # TODO: 选择Ollama中已拉取的模型: m3e / bge-m3 / nomic-embed-text 等
+      model: m3e
+
+    # 通义千问Embedding配置（当 type=tongyi 时生效）
+    tongyi:
+      # TODO: 填入通义千问API Key（格式: sk-xxx）
+      api-key: sk-xxx
+      # TODO: 选择模型: text-embedding-v1 / text-embedding-v2
+      model: text-embedding-v2
+
+    # ONNX本地模型配置（当 type=onnx 时生效）
+    onnx:
+      # TODO: 填入已导出的ONNX模型文件路径
+      #   例如: ./models/bge-small-zh/model.onnx 或 /data/models/m3e-base/model.onnx
+      model-path: ./models/m3e-base/model.onnx
+      # TODO: Tokenizer路径（与模型同目录）
+      tokenizer-path: ./models/m3e-base/tokenizer.json
+      # 向量维度（bge-small=512, m3e-base=768, bge-large=1024）
+      dim: 768
+
+  # ---------- Weaviate向量库配置 ----------
+  weaviate:
+    # TODO: 填入Weaviate服务地址
+    #   本地Docker: http://localhost:8080
+    #   Weaviate Cloud: https://your-cluster-id.weaviate.network
+    #   自建集群: http://192.168.1.100:8080
+    url: http://localhost:8080
+
+    # TODO: 填入Weaviate认证Token（Weaviate Cloud或启用API Key认证时需要）
+    #   不需要认证则注释掉或留空
+    token:
+
+    # TODO: Weaviate集合/类名称（建议按业务分集合）
+    collection: Document
+
+  # ---------- 默认分片配置 ----------
+  chunk:
+    default:
+      # 固定分片大小（字符数）
+      fixed-size: 500
+      # 滑动重叠窗口
+      slide-overlap: 50
+      # 语义相似度阈值 (0-1)
+      semantic-threshold: 0.7
+      # 表格是否独立分片
+      split-table: true
+      # 代码是否按函数拆分
+      split-code: true
+      # 最大标题层级
+      max-title-level: 3
+      # 父子分片-父块长度
+      parent-chunk-len: 1000
+      # 父子分片-子块长度
+      child-chunk-len: 200
+
+  # ---------- MinIO文件存储配置（可选） ----------
+  minio:
+    # TODO: 是否启用MinIO（true/false），默认使用本地文件系统
+    enabled: false
+    # TODO: 填入MinIO服务地址
+    endpoint: http://localhost:9000
+    # TODO: 填入MinIO Access Key
+    access-key: minioadmin
+    # TODO: 填入MinIO Secret Key
+    secret-key: minioadmin
+    # TODO: 填入Bucket名称
+    bucket: rag-documents
+
+# ==================== 日志配置 ====================
+logging:
+  level:
+    com.rag: DEBUG
+    io.weaviate: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
