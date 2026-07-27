@@ -82,7 +82,6 @@ rag:
   # ---------- 鉴权与安全配置（需求6-7） ----------
   auth:
     jwt:
-      # TODO: 配置JWT签名密钥（生产环境务必修改为256位以上强随机密钥）
       #   可使用 openssl rand -base64 32 命令生成
       secret: rag-tool-default-secret-key-change-in-production-min-256-bits!!
       # accessToken有效期（毫秒），默认2小时
