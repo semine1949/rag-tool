@@ -14,74 +14,90 @@ spring:
     multipart:
       max-file-size: 100MB
       max-request-size: 500MB
+  # ---------- MySQL数据源（用户/权限/版本持久化） ----------
+  datasource:
+    url: jdbc:mysql://localhost:3306/rag_tool?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: semine
+    password: semine123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+# ==================== MyBatis 配置 ====================
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.rag.core.entity
+  type-handlers-package: com.rag.auth.typehandler
+  configuration:
+    map-underscore-to-camel-case: true
 
 # ==================== RAG核心配置 ====================
 rag:
-  # ---------- OCR配置 ----------
-  ocr:
-    # TODO: 配置Tesseract OCR数据路径
-    #   Windows示例: D:/tessdata
-    #   Linux示例: /usr/share/tesseract-ocr/5/tessdata
-    #   Docker中: /usr/share/tesseract-ocr/4.00/tessdata
-    data-path: D:/tessdata
+  # ---------- DeepSeek-OCR 配置（OpenAI 兼容远程端点，图片/文档统一识别） ----------
+  deepseek-ocr:
+    api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+    # 硅基流动 Base URL（客户端会自动追加 /chat/completions）
+    base-url: https://api.siliconflow.cn/v1
+    # 远程部署的 DeepSeek-OCR 模型名
+    model: deepseek-ai/DeepSeek-OCR
+    # 远程调用超时（毫秒）
+    timeout-ms: 120000
 
-    # TODO: 配置OCR识别语言（多个语言用+号连接）
-    #   chi_sim = 中文简体, eng = 英文, chi_tra = 中文繁体
-    #   示例: chi_sim+eng
-    language: chi_sim+eng
-
-  # ---------- Embedding模型配置 ----------
+  # ---------- Embedding模型配置（远程 API，均走 OpenAI 兼容协议） ----------
   embedding:
-    # TODO: 当前使用的模型类型: ollama / openai / tongyi / onnx
-    type: ollama
+    # 默认模型类型: tongyi / bge-m3 / openai
+    type: tongyi
 
-    # TODO: OpenAI Embedding配置（当 type=openai 时生效）
-    openai:
-      # TODO: 填入OpenAI API Key（格式: sk-xxx）
-      api-key: sk-xxx
-      # TODO: 填入OpenAI Base URL（默认: https://api.openai.com/v1）
-      base-url: https://api.openai.com/v1
-      # TODO: 选择模型: text-embedding-3-small / text-embedding-3-large / text-embedding-ada-002
-      model: text-embedding-3-small
-
-    # Ollama本地Embedding配置（当 type=ollama 时生效）
-    ollama:
-      # TODO: 确认Ollama服务地址（默认: http://localhost:11434）
-      base-url: http://localhost:11434
-      # TODO: 选择Ollama中已拉取的模型: m3e / bge-m3 / nomic-embed-text 等
-      model: m3e
-
-    # 通义千问Embedding配置（当 type=tongyi 时生效）
+    # Qwen3 Embedding 配置（当模型名含 qwen/tongyi 时生效，走硅基流动）
     tongyi:
-      # TODO: 填入通义千问API Key（格式: sk-xxx）
-      api-key: sk-xxx
-      # TODO: 选择模型: text-embedding-v1 / text-embedding-v2
-      model: text-embedding-v2
+      api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+      # 硅基流动模型名
+      model: Qwen/Qwen3-Embedding-0.6B
+      # 向量维度（需与 Weaviate 集合维度一致）
+      dim: 1024
 
-    # ONNX本地模型配置（当 type=onnx 时生效）
-    onnx:
-      # TODO: 填入已导出的ONNX模型文件路径
-      #   例如: ./models/bge-small-zh/model.onnx 或 /data/models/m3e-base/model.onnx
-      model-path: ./models/m3e-base/model.onnx
-      # TODO: Tokenizer路径（与模型同目录）
-      tokenizer-path: ./models/m3e-base/tokenizer.json
-      # 向量维度（bge-small=512, m3e-base=768, bge-large=1024）
-      dim: 768
+    # BGE-M3 配置（当模型名含 bge 时生效，走硅基流动）
+    bge-m3:
+      api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+      # 硅基流动 Base URL（客户端会自动追加 /embeddings）
+      base-url: https://api.siliconflow.cn/v1
+      # 模型名称
+      model: BAAI/bge-m3
+      # 向量维度（需与 Weaviate 集合维度一致）
+      dim: 1024
+
+    # OpenAI 兼容配置（当模型名含 text-embedding/openai 时生效）
+    openai:
+      api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      # OpenAI 兼容 Base URL（客户端会自动追加 /embeddings）
+      base-url: https://api.openai.com/v1
+      # 模型名称
+      model: text-embedding-3-small
+      # 向量维度（text-embedding-3-small=1536）
+      dim: 1536
 
   # ---------- Weaviate向量库配置 ----------
   weaviate:
-    # TODO: 填入Weaviate服务地址
-    #   本地Docker: http://localhost:8080
-    #   Weaviate Cloud: https://your-cluster-id.weaviate.network
-    #   自建集群: http://192.168.1.100:8080
-    url: http://localhost:8080
+    url: http://192.168.71.12:8080
+    collection: Document_V1
 
-    # TODO: 填入Weaviate认证Token（Weaviate Cloud或启用API Key认证时需要）
-    #   不需要认证则注释掉或留空
-    token:
+  # ---------- 鉴权与安全配置（需求6-7） ----------
+  auth:
+    jwt:
+      # TODO: 配置JWT签名密钥（生产环境务必修改为256位以上强随机密钥）
+      #   可使用 openssl rand -base64 32 命令生成
+      secret: rag-tool-default-secret-key-change-in-production-min-256-bits!!
+      # accessToken有效期（毫秒），默认2小时
+      access-expiration: 7200000
+      # refreshToken有效期（毫秒），默认7天
+      refresh-expiration: 604800000
+    login:
+      max-fail-count: 5
+      lock-minutes: 30
 
-    # TODO: Weaviate集合/类名称（建议按业务分集合）
-    collection: Document
+  # ---------- 版本管理配置（需求7） ----------
+  version:
+    keep-versions: 10
+    auto-clean-enabled: false
+    auto-clean-cron: "0 0 2 * * ?"
 
   # ---------- 默认分片配置 ----------
   chunk:
@@ -105,8 +121,10 @@ rag:
 
   # ---------- MinIO文件存储配置（可选） ----------
   minio:
-    # TODO: 是否启用MinIO（true/false），默认使用本地文件系统
+    # 是否启用MinIO（true/false），默认使用本地文件系统
     enabled: false
+    # 当 enabled=false 时，上传文件持久化到该本地目录（相对路径基于应用启动目录）
+    local-path: ./data/uploads
     # TODO: 填入MinIO服务地址
     endpoint: http://localhost:9000
     # TODO: 填入MinIO Access Key

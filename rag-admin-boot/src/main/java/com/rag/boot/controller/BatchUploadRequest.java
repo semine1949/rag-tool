@@ -1,16 +1,11 @@
 package com.rag.boot.controller;
 
-import com.rag.core.config.ChunkConfig;
-import com.rag.core.config.EmbeddingConfig;
-import com.rag.core.config.WeaviateCollectionConfig;
-import lombok.Data;
-
 /**
- * 批量上传请求体
+ * 批量上传请求 DTO（Multi-Tenant v2）
  */
-@Data
 public class BatchUploadRequest {
-    private ChunkConfig chunkConfig;
-    private EmbeddingConfig embeddingConfig;
-    private WeaviateCollectionConfig collectionConfig;
+    private Long kbId;
+
+    public Long getKbId() { return kbId; }
+    public void setKbId(Long kbId) { this.kbId = kbId; }
 }

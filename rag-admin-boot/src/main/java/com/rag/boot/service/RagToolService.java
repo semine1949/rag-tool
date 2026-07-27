@@ -1,15 +1,18 @@
 package com.rag.boot.service;
 
+import com.rag.auth.mapper.KbDocumentMapper;
+import com.rag.auth.service.KbConfigService;
 import com.rag.chunker.ChunkerFactory;
+import com.rag.core.api.DocumentVersionService;
 import com.rag.core.api.VectorStore;
+import com.rag.embedding.EmbeddingFactory;
+import com.rag.parser.DocumentParseFactory;
 import com.rag.core.config.ChunkConfig;
 import com.rag.core.config.EmbeddingConfig;
 import com.rag.core.config.WeaviateCollectionConfig;
 import com.rag.core.entity.*;
 import com.rag.core.enums.EmbeddingModelType;
 import com.rag.core.exception.RagException;
-import com.rag.embedding.EmbeddingFactory;
-import com.rag.parser.DocumentParseFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -19,14 +22,18 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.stream.Collectors;
 
 /**
- * RAG工具核心服务 - 串联整个处理链路
+ * RAG工具核心服务 —— Multi-Tenant v2
+ * 按 kbId 从 DB 加载预设配置，自动完成 解析→分片→向量化→入库
  */
 @Service
 public class RagToolService {
@@ -37,70 +44,119 @@ public class RagToolService {
     private final ChunkerFactory chunkerFactory;
     private final EmbeddingFactory embeddingFactory;
     private final VectorStore vectorStore;
+    private final DocumentVersionService versionService;
     private final Executor taskExecutor;
-
-    // TODO: 配置Weaviate集合名称，默认为 "Document"
-    private static final String DEFAULT_COLLECTION = "Document";
-
-    // TODO: 配置默认Embedding模型类型
-    private static final EmbeddingModelType DEFAULT_MODEL_TYPE = EmbeddingModelType.OLLAMA;
-
-    // TODO: 配置模型名称，对应实际使用的模型
-    private static final String DEFAULT_MODEL_NAME = "m3e";
-
-    // TODO: 配置Ollama/OpenAI等Embedding API 的 Base URL
-    private static final String DEFAULT_EMBEDDING_BASE_URL = "http://localhost:11434";
-
-    // TODO: 配置API Key（OpenAI/Tongyi等在线API需要）
-    private static final String DEFAULT_API_KEY = "sk-xxx";
+    private final KbConfigService kbConfigService;
+    private final KbDocumentMapper kbDocumentMapper;
 
     public RagToolService(DocumentParseFactory parseFactory,
                           ChunkerFactory chunkerFactory,
                           EmbeddingFactory embeddingFactory,
                           VectorStore vectorStore,
-                          @Qualifier("ragTaskExecutor") Executor taskExecutor) {
+                          DocumentVersionService versionService,
+                          @Qualifier("ragTaskExecutor") Executor taskExecutor,
+                          KbConfigService kbConfigService,
+                          KbDocumentMapper kbDocumentMapper) {
         this.parseFactory = parseFactory;
         this.chunkerFactory = chunkerFactory;
         this.embeddingFactory = embeddingFactory;
         this.vectorStore = vectorStore;
+        this.versionService = versionService;
         this.taskExecutor = taskExecutor;
+        this.kbConfigService = kbConfigService;
+        this.kbDocumentMapper = kbDocumentMapper;
     }
 
     /**
-     * 单文件完整处理链路：解析 → 分片 → 向量化 → 入库
+     * 单文件完整处理链路（Multi-Tenant v2）
      */
-    public FileProcessResult processFile(MultipartFile file, ChunkConfig chunkConfig,
-                                         EmbeddingConfig embeddingConfig,
-                                         WeaviateCollectionConfig collectionConfig) {
+    public FileProcessResult processFile(MultipartFile file, Long kbId, Long userId) {
+        // 从知识库加载预设配置
+        KbConfigService.KbLoadedConfig loaded = kbConfigService.loadAllConfigs(kbId);
+        ChunkConfig chunkConfig = loaded.chunkConfig();
+        EmbeddingConfig embeddingConfig = loaded.embeddingConfig();
+        WeaviateCollectionConfig collectionConfig = loaded.collectionConfig();
+
         File tempFile = null;
         try {
-            // 1. 创建临时文件
-            tempFile = File.createTempFile("rag_", "_" + file.getOriginalFilename());
-            file.transferTo(tempFile);
+            // 1. 文件落盘
+            Path dir = Paths.get("./data/uploads").toAbsolutePath().normalize();
+            Files.createDirectories(dir);
+            String safeName = sanitizeFileName(file.getOriginalFilename());
+            String storedName = UUID.randomUUID().toString().substring(0, 8) + "_" + safeName;
+            tempFile = dir.resolve(storedName).toFile();
+            try (InputStream in = file.getInputStream()) {
+                Files.copy(in, tempFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
 
             // 2. 文档解析
-            log.info("开始解析文件: {}", file.getOriginalFilename());
+            log.info("开始解析文件: kbId={}, fileName={}", kbId, file.getOriginalFilename());
             DocumentParseResult parseResult = parseFactory.parse(tempFile);
             if (parseResult.getFullText() == null || parseResult.getFullText().isBlank()) {
                 throw new RagException("RAG_SVC_001", "未提取到有效文本: " + file.getOriginalFilename());
             }
 
             // 3. 文本分片
-            log.info("开始分片: {}, 策略={}", file.getOriginalFilename(), chunkConfig.getEnableStrategies());
+            log.info("开始分片: kbId={}, fileName={}, strategies={}", kbId, file.getOriginalFilename(), chunkConfig.getEnableStrategies());
             List<Chunk> chunks = chunkerFactory.chunk(parseResult, chunkConfig);
 
-            // 4. Embedding向量化
-            log.info("开始向量化: {}, chunk数={}", file.getOriginalFilename(), chunks.size());
-            EmbeddingConfig embedCfg = embeddingConfig != null ? embeddingConfig : buildDefaultEmbeddingConfig();
-            embeddingFactory.switchModel(embedCfg);
-            List<String> chunkTexts = chunks.stream().map(Chunk::getText).toList();
-            List<float[]> vectors = embeddingFactory.batchEmbed(chunkTexts, embedCfg);
+            // 4. 版本号生成与权限绑定
+            String documentId = parseResult.getMeta().getFileId();
+            String collectionClassName = collectionConfig.getClassName();
+            Long tenantId = loaded.kb().getTenantId();
 
-            // 5. 构建VectorRecord
+            DocumentVersion currentVersion = versionService.getCurrentVersion(documentId);
+            String changeType = currentVersion == null ? "INITIAL" : "MINOR";
+            String newVersion = versionService.generateNextVersion(documentId, changeType);
+
+            for (Chunk chunk : chunks) {
+                chunk.setDocumentId(documentId);
+                chunk.setDocumentVersion(newVersion);
+                chunk.setOwnerId(userId);
+            }
+
+            DocumentVersion versionDoc = DocumentVersion.builder()
+                    .documentId(documentId)
+                    .tenantId(tenantId)
+                    .kbId(kbId)
+                    .version(newVersion)
+                    .chunkCount(chunks.size())
+                    .operatorId(userId)
+                    .changeType(changeType)
+                    .changeRemark("文件上传入库")
+                    .collectionName(collectionClassName)
+                    .currentActive(true)
+                    .build();
+            versionService.createVersion(versionDoc);
+
+            // 登记文档到 kb_document 表
+            KbDocument kbDoc = KbDocument.builder()
+                    .kbId(kbId)
+                    .tenantId(tenantId)
+                    .fileName(file.getOriginalFilename())
+                    .fileType(detectContentType(file.getOriginalFilename()))
+                    .chunkCount(chunks.size())
+                    .version(newVersion)
+                    .ownerId(userId)
+                    .collectionName(collectionClassName)
+                    .uploadTime(new Date())
+                    .build();
+            kbDocumentMapper.insert(kbDoc);
+
+            log.info("版本号生成: documentId={}, version={}, changeType={}, chunks={}",
+                    documentId, newVersion, changeType, chunks.size());
+
+            // 5. Embedding向量化
+            log.info("开始向量化: kbId={}, fileName={}, chunks={}", kbId, file.getOriginalFilename(), chunks.size());
+            embeddingFactory.switchModel(embeddingConfig);
+            List<String> chunkTexts = chunks.stream().map(Chunk::getText).toList();
+            List<float[]> vectors = embeddingFactory.batchEmbed(chunkTexts, embeddingConfig);
+
             if (vectors.size() != chunks.size()) {
                 throw new RagException("RAG_SVC_002", "向量数量与分片数量不一致");
             }
 
+            // 6. 构建VectorRecord（写入 tenantId / kbId 元数据）
             List<VectorRecord> records = new ArrayList<>();
             for (int i = 0; i < chunks.size(); i++) {
                 Chunk chunk = chunks.get(i);
@@ -122,24 +178,24 @@ public class RagToolService {
                         .sourcePath(parseResult.getMeta().getSourcePath())
                         .fileId(parseResult.getMeta().getFileId())
                         .textHash(chunk.getTextHash())
+                        .documentId(chunk.getDocumentId())
+                        .documentVersion(chunk.getDocumentVersion())
+                        .ownerId(chunk.getOwnerId())
+                        .tenantId(tenantId)
+                        .kbId(kbId)
                         .extraMeta(chunk.getExtraMeta())
                         .build());
             }
 
-            // 6. 入库Weaviate
-            WeaviateCollectionConfig collCfg = collectionConfig != null ? collectionConfig :
-                    buildDefaultCollectionConfig(embeddingFactory.getVectorDim(embedCfg));
-
-            // 初始化集合
-            vectorStore.initCollection(collCfg);
+            // 7. 入库Weaviate（物理隔离集合）
+            vectorStore.initCollection(collectionConfig);
 
             // 增量更新：先删除该文件的旧分片
             if (parseResult.getMeta().getFileId() != null) {
-                vectorStore.deleteByFileId(parseResult.getMeta().getFileId(), collCfg.getClassName());
+                vectorStore.deleteByFileId(parseResult.getMeta().getFileId(), collectionConfig.getClassName());
             }
 
-            // 批量写入
-            int inserted = vectorStore.batchInsert(records, collCfg);
+            int inserted = vectorStore.batchInsert(records, collectionConfig);
 
             return FileProcessResult.builder()
                     .fileId(parseResult.getMeta().getFileId())
@@ -150,14 +206,16 @@ public class RagToolService {
                     .build();
 
         } catch (Exception e) {
-            log.error("文件处理失败: {}", file.getOriginalFilename(), e);
+            log.error("文件处理失败: kbId={}, fileName={}", kbId, file.getOriginalFilename(), e);
             return FileProcessResult.builder()
                     .fileName(file.getOriginalFilename())
                     .success(false)
                     .error(e.getMessage())
                     .build();
         } finally {
-            if (tempFile != null) tempFile.delete();
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+            }
         }
     }
 
@@ -166,11 +224,10 @@ public class RagToolService {
      */
     @Async("ragTaskExecutor")
     public CompletableFuture<List<FileProcessResult>> batchProcessFiles(
-            List<MultipartFile> files, ChunkConfig chunkConfig,
-            EmbeddingConfig embeddingConfig, WeaviateCollectionConfig collectionConfig) {
+            List<MultipartFile> files, Long kbId, Long userId) {
         List<FileProcessResult> results = new ArrayList<>();
         for (MultipartFile file : files) {
-            results.add(processFile(file, chunkConfig, embeddingConfig, collectionConfig));
+            results.add(processFile(file, kbId, userId));
         }
         return CompletableFuture.completedFuture(results);
     }
@@ -178,9 +235,7 @@ public class RagToolService {
     /**
      * 处理本地文件夹
      */
-    public List<FileProcessResult> processDirectory(String dirPath, ChunkConfig chunkConfig,
-                                                    EmbeddingConfig embeddingConfig,
-                                                    WeaviateCollectionConfig collectionConfig) {
+    public List<FileProcessResult> processDirectory(String dirPath, Long kbId, Long userId) {
         File dir = new File(dirPath);
         if (!dir.exists() || !dir.isDirectory()) {
             throw new RagException("RAG_SVC_003", "目录不存在: " + dirPath);
@@ -196,7 +251,7 @@ public class RagToolService {
                         MultipartFile mf = new InMemoryMultipartFile(
                                 file.getName(), file.getName(),
                                 detectContentType(file.getName()), content);
-                        results.add(processFile(mf, chunkConfig, embeddingConfig, collectionConfig));
+                        results.add(processFile(mf, kbId, userId));
                     } catch (IOException e) {
                         log.error("读取文件失败: {}", file.getName(), e);
                     }
@@ -207,50 +262,49 @@ public class RagToolService {
     }
 
     /**
-     * 集合管理：初始化
+     * 向量检索
      */
-    public void initCollection(WeaviateCollectionConfig config) {
-        vectorStore.initCollection(config);
+    public List<FileProcessResult> search(Long kbId, Long userId, String query, int topK) {
+        KbConfigService.KbLoadedConfig loaded = kbConfigService.loadAllConfigs(kbId);
+        EmbeddingConfig embeddingConfig = loaded.embeddingConfig();
+        WeaviateCollectionConfig collectionConfig = loaded.collectionConfig();
+
+        // 向量化查询文本
+        embeddingFactory.switchModel(embeddingConfig);
+        List<float[]> vecs = embeddingFactory.batchEmbed(List.of(query), embeddingConfig);
+        List<Float> vecList = new ArrayList<>();
+        for (float v : vecs.get(0)) vecList.add(v);
+
+        // 检索
+        List<VectorRecord> results = vectorStore.search(vecList, topK, null, collectionConfig.getClassName());
+
+        return results.stream()
+                .map(r -> FileProcessResult.builder()
+                        .fileId(r.getFileId())
+                        .fileName(r.getFileName())
+                        .success(true)
+                        .build())
+                .toList();
     }
 
     /**
-     * 集合管理：清空
+     * 列出知识库文档
      */
-    public void clearCollection(String className) {
-        vectorStore.clearCollection(className);
+    public List<KbDocument> listDocuments(Long kbId) {
+        return kbDocumentMapper.findByKbId(kbId);
     }
 
-    /**
-     * 集合管理：删除
-     */
-    public void dropCollection(String className) {
-        vectorStore.dropCollection(className);
-    }
+    // ============ 工具方法 ============
 
-    // ============ 默认配置 ============
-
-    private EmbeddingConfig buildDefaultEmbeddingConfig() {
-        return EmbeddingConfig.builder()
-                .modelType(DEFAULT_MODEL_TYPE)
-                .modelName(DEFAULT_MODEL_NAME)
-                .baseUrl(DEFAULT_EMBEDDING_BASE_URL)
-                .modelSource(DEFAULT_API_KEY)
-                .batchSize(16)
-                .maxTextLen(512)
-                .build();
-    }
-
-    private WeaviateCollectionConfig buildDefaultCollectionConfig(int vectorDim) {
-        return WeaviateCollectionConfig.builder()
-                .className(DEFAULT_COLLECTION)
-                .vectorDim(vectorDim)
-                .distanceMetric("cosine")
-                .dedupStrategy("skip")
-                .batchSize(500)
-                .build();
+    private String sanitizeFileName(String name) {
+        if (name == null) return "unnamed";
+        return name.replaceAll("[/\\\\]", "_")
+                   .replaceAll("\\.{2,}", ".")
+                   .replaceAll("\\s+", "_");
     }
 
     private String detectContentType(String fileName) {
+        if (fileName == null) return "application/octet-stream";
         String ext = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
         return switch (ext) {
             case "pdf" -> "application/pdf";

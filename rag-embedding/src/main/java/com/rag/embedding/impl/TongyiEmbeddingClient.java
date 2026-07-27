@@ -13,7 +13,11 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 通义千问 Embedding API 实现
+ * 通义千问 Embedding 客户端（OpenAI 兼容协议，通过硅基流动调用）。
+ * <p>
+ * 请求路径: POST {baseUrl}/embeddings + Bearer 鉴权，
+ * 请求/响应格式与 OpenAI Embeddings API 兼容。
+ * 默认模型: Qwen/Qwen3-Embedding-0.6B（1024 维）。
  */
 public class TongyiEmbeddingClient implements EmbeddingClient {
 
@@ -23,13 +27,16 @@ public class TongyiEmbeddingClient implements EmbeddingClient {
             .readTimeout(60, TimeUnit.SECONDS)
             .build();
 
-    // text-embedding-v1/v2 默认1536维
-    private static final int DEFAULT_VECTOR_DIM = 1536;
+    // Qwen3-Embedding 默认向量维度 1024
+    private static final int DEFAULT_VECTOR_DIM = 1024;
 
     @Override
     public List<float[]> batchEmbed(List<String> texts, EmbeddingConfig config) {
-        // TODO: 填入通义千问API Key，格式为 sk-xxx
         String apiKey = config.getModelSource();
+        String baseUrl = config.getBaseUrl();
+        String modelName = config.getModelName();
+        int maxLen = config.getMaxTextLen() != null ? config.getMaxTextLen() : 512;
+
         if (apiKey == null || apiKey.isBlank() || "sk-xxx".equals(apiKey)) {
             throw new RagException("RAG_EMBED_TONGYI", "通义千问 api-key未正确配置，请填入有效的API Key");
         }
@@ -41,40 +48,40 @@ public class TongyiEmbeddingClient implements EmbeddingClient {
             int end = Math.min(i + batchSize, texts.size());
             List<String> batch = texts.subList(i, end);
 
+            // 截断文本
+            List<String> truncated = batch.stream()
+                    .map(t -> t.length() > maxLen ? t.substring(0, maxLen) : t)
+                    .toList();
+
             try {
                 Map<String, Object> param = new HashMap<>();
-                param.put("model", config.getModelName() != null ? config.getModelName() : "text-embedding-v2");
-                Map<String, Object> input = new HashMap<>();
-                input.put("texts", batch);
-                param.put("input", input);
-
-                Map<String, Object> params = new HashMap<>();
-                params.put("text_type", "document");
+                param.put("model", modelName != null ? modelName : "Qwen/Qwen3-Embedding-0.6B");
+                param.put("input", truncated.size() == 1 ? truncated.get(0) : truncated);
+                param.put("encoding_format", "float");
 
                 RequestBody body = RequestBody.create(
                         JSONUtil.toJsonStr(param),
                         MediaType.parse("application/json"));
                 Request request = new Request.Builder()
-                        .url("https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding")
+                        .url(baseUrl + "/embeddings")
                         .header("Authorization", "Bearer " + apiKey)
-                        .header("Content-Type", "application/json")
                         .post(body)
                         .build();
 
                 try (Response response = client.newCall(request).execute()) {
                     if (!response.isSuccessful() || response.body() == null) {
+                        String errorBody = response.body() != null ? response.body().string() : "";
                         throw new RagException("RAG_EMBED_TONGYI",
-                                "通义千问调用失败，状态码: " + response.code());
+                                "通义千问调用失败，状态码: " + response.code() + ", body: " + errorBody);
                     }
                     var json = JSONUtil.parseObj(response.body().string());
-                    var output = json.getJSONObject("output");
-                    var embeddings = output.getJSONArray("embeddings");
-                    for (int j = 0; j < embeddings.size(); j++) {
-                        List<Double> emb = embeddings.getJSONObject(j)
+                    var dataArray = json.getJSONArray("data");
+                    for (int j = 0; j < dataArray.size(); j++) {
+                        List<Double> embedding = dataArray.getJSONObject(j)
                                 .getJSONArray("embedding").toList(Double.class);
-                        float[] vec = new float[emb.size()];
-                        for (int k = 0; k < emb.size(); k++) {
-                            vec[k] = emb.get(k).floatValue();
+                        float[] vec = new float[embedding.size()];
+                        for (int k = 0; k < embedding.size(); k++) {
+                            vec[k] = embedding.get(k).floatValue();
                         }
                         results.add(vec);
                     }

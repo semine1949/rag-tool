@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 向量记录（入库用）
+ * 向量记录（入库用, Multi-Tenant v2）
  */
 @Data
 @Builder
@@ -42,6 +42,18 @@ public class VectorRecord {
     private String fileId;
     /** 文本哈希（去重用） */
     private String textHash;
+    // ==================== 版本字段 ====================
+    /** 文档唯一标识 */
+    private String documentId;
+    /** 文档版本号（语义化版本） */
+    private String documentVersion;
+    /** 创建人/所有者ID */
+    private Long ownerId;
     /** 扩展元数据 */
     private Map<String, Object> extraMeta;
+    // ==================== 多租户字段 ====================
+    /** 所属租户ID（审计） */
+    private Long tenantId;
+    /** 所属知识库ID（审计） */
+    private Long kbId;
 }

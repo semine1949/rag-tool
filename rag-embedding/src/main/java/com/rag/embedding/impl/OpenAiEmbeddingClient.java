@@ -13,7 +13,10 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
- * OpenAI Embedding API实现
+ * OpenAI 兼容 Embedding 客户端（对接 text-embedding-3-small 等）。
+ * 请求路径: POST {baseUrl}/embeddings + Bearer 鉴权，
+ * 请求/响应格式与 OpenAI Embeddings API 兼容。
+ * 默认模型: text-embedding-3-small（1536 维）。
  */
 public class OpenAiEmbeddingClient implements EmbeddingClient {
 
@@ -23,7 +26,7 @@ public class OpenAiEmbeddingClient implements EmbeddingClient {
             .readTimeout(60, TimeUnit.SECONDS)
             .build();
 
-    // text-embedding-3-small 默认维度
+    // text-embedding-3-small 默认向量维度 1536
     private static final int DEFAULT_VECTOR_DIM = 1536;
 
     @Override
@@ -33,14 +36,15 @@ public class OpenAiEmbeddingClient implements EmbeddingClient {
         String modelName = config.getModelName();
         int maxLen = config.getMaxTextLen() != null ? config.getMaxTextLen() : 8191;
 
-        // TODO: 填入OpenAI API Key，格式为 sk-xxx
         if (apiKey == null || apiKey.isBlank() || "sk-xxx".equals(apiKey)) {
             throw new RagException("RAG_EMBED_OPENAI", "OpenAI api-key未正确配置，请填入有效的API Key");
         }
+        if (baseUrl == null || baseUrl.isBlank()) {
+            baseUrl = "https://api.openai.com/v1";
+        }
 
-        // 批量处理 - 一次请求发送多条文本
         List<float[]> results = new ArrayList<>();
-        int batchSize = config.getBatchSize() != null ? config.getBatchSize() : 32;
+        int batchSize = config.getBatchSize() != null ? config.getBatchSize() : 16;
 
         for (int i = 0; i < texts.size(); i += batchSize) {
             int end = Math.min(i + batchSize, texts.size());
@@ -55,12 +59,13 @@ public class OpenAiEmbeddingClient implements EmbeddingClient {
                 Map<String, Object> param = new HashMap<>();
                 param.put("model", modelName != null ? modelName : "text-embedding-3-small");
                 param.put("input", truncated.size() == 1 ? truncated.get(0) : truncated);
+                param.put("encoding_format", "float");
 
                 RequestBody body = RequestBody.create(
                         JSONUtil.toJsonStr(param),
                         MediaType.parse("application/json"));
                 Request request = new Request.Builder()
-                        .url((baseUrl != null ? baseUrl : "https://api.openai.com/v1") + "/embeddings")
+                        .url(baseUrl + "/embeddings")
                         .header("Authorization", "Bearer " + apiKey)
                         .post(body)
                         .build();
@@ -69,7 +74,7 @@ public class OpenAiEmbeddingClient implements EmbeddingClient {
                     if (!response.isSuccessful() || response.body() == null) {
                         String errorBody = response.body() != null ? response.body().string() : "";
                         throw new RagException("RAG_EMBED_OPENAI",
-                                "OpenAI调用失败，状态码: " + response.code() + ", body: " + errorBody);
+                                "OpenAI Embedding调用失败，状态码: " + response.code() + ", body: " + errorBody);
                     }
                     var json = JSONUtil.parseObj(response.body().string());
                     var dataArray = json.getJSONArray("data");
@@ -87,7 +92,7 @@ public class OpenAiEmbeddingClient implements EmbeddingClient {
                 throw e;
             } catch (Exception e) {
                 log.error("OpenAI Embedding调用失败: {}", e.getMessage());
-                throw new RagException("RAG_EMBED_OPENAI", "OpenAI调用失败: " + e.getMessage(), e);
+                throw new RagException("RAG_EMBED_OPENAI", "OpenAI Embedding调用失败: " + e.getMessage(), e);
             }
         }
         return results;
@@ -101,16 +106,7 @@ public class OpenAiEmbeddingClient implements EmbeddingClient {
 
     @Override
     public int getVectorDim(EmbeddingConfig config) {
-        if (config.getVectorDim() != null) return config.getVectorDim();
-        String modelName = config.getModelName();
-        if (modelName != null) {
-            return switch (modelName) {
-                case "text-embedding-3-large", "text-embedding-ada-002" -> 1536;
-                case "text-embedding-3-small" -> 1536;
-                default -> DEFAULT_VECTOR_DIM;
-            };
-        }
-        return DEFAULT_VECTOR_DIM;
+        return config.getVectorDim() != null ? config.getVectorDim() : DEFAULT_VECTOR_DIM;
     }
 
     @Override

@@ -4,16 +4,10 @@ package com.rag.core.enums;
  * Embedding模型类型枚举
  */
 public enum EmbeddingModelType {
-    /** 本地ONNX模型 */
-    ONNX,
-    /** OpenAI API */
-    OPENAI,
-    /** Ollama本地 */
-    OLLAMA,
-    /** 智谱 */
-    ZHIPU,
+    /** BGE-M3（OpenAI兼容远程端点） */
+    BGE_M3,
     /** 通义千问 */
     TONGYI,
-    /** MiniMax */
-    MINIMAX
+    /** OpenAI 兼容端点（text-embedding-3-small 等） */
+    OPENAI
 }
