@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.rag.auth.mapper.DocumentVersionMapper">
+
+    <resultMap id="DocumentVersionResultMap" type="com.rag.core.entity.DocumentVersion">
+        <id property="id" column="id"/>
+        <result property="documentId" column="document_id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="kbId" column="kb_id"/>
+        <result property="version" column="version"/>
+        <result property="chunkCount" column="chunk_count"/>
+        <result property="operatorId" column="operator_id"/>
+        <result property="changeType" column="change_type"/>
+        <result property="changeRemark" column="change_remark"/>
+        <result property="collectionName" column="collection_name"/>
+        <result property="currentActive" column="current_active"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <select id="findByDocumentId" resultMap="DocumentVersionResultMap">
+        SELECT id, document_id, tenant_id, kb_id, version, chunk_count, operator_id,
+               change_type, change_remark, collection_name, current_active, create_time
+        FROM doc_version
+        WHERE document_id = #{documentId}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="findCurrentVersion" resultMap="DocumentVersionResultMap">
+        SELECT id, document_id, tenant_id, kb_id, version, chunk_count, operator_id,
+               change_type, change_remark, collection_name, current_active, create_time
+        FROM doc_version
+        WHERE document_id = #{documentId} AND current_active = 1
+        LIMIT 1
+    </select>
+
+    <select id="findByDocIdAndVersion" resultMap="DocumentVersionResultMap">
+        SELECT id, document_id, tenant_id, kb_id, version, chunk_count, operator_id,
+               change_type, change_remark, collection_name, current_active, create_time
+        FROM doc_version
+        WHERE document_id = #{documentId} AND version = #{version}
+    </select>
+
+    <select id="findLatestVersion" resultMap="DocumentVersionResultMap">
+        SELECT id, document_id, tenant_id, kb_id, version, chunk_count, operator_id,
+               change_type, change_remark, collection_name, current_active, create_time
+        FROM doc_version
+        WHERE document_id = #{documentId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO doc_version (document_id, tenant_id, kb_id, version, chunk_count, operator_id,
+                                 change_type, change_remark, collection_name,
+                                 current_active, create_time)
+        VALUES (#{documentId}, #{tenantId}, #{kbId}, #{version}, #{chunkCount}, #{operatorId},
+                #{changeType}, #{changeRemark}, #{collectionName},
+                #{currentActive}, #{createTime})
+    </insert>
+
+    <update id="deactivateAll">
+        UPDATE doc_version SET current_active = 0
+        WHERE document_id = #{documentId}
+    </update>
+
+    <update id="activeVersion">
+        UPDATE doc_version SET current_active = 1
+        WHERE document_id = #{documentId} AND version = #{version}
+    </update>
+
+    <delete id="deleteOlderThan">
+        DELETE FROM doc_version
+        WHERE document_id = #{documentId}
+          AND id NOT IN (
+              SELECT t.id FROM (
+                  SELECT id FROM doc_version
+                  WHERE document_id = #{documentId}
+                  ORDER BY create_time DESC
+                  LIMIT #{keepCount}
+              ) t
+          )
+    </delete>
+
+</mapper>

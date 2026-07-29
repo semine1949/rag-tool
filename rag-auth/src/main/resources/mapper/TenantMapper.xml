@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.rag.auth.mapper.TenantMapper">
+
+    <resultMap id="TenantResultMap" type="com.rag.core.entity.Tenant">
+        <id property="tenantId" column="tenant_id"/>
+        <result property="tenantName" column="tenant_name"/>
+        <result property="defaultEmbeddingModel" column="default_embedding_model"/>
+        <result property="status" column="status"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <select id="findById" resultMap="TenantResultMap">
+        SELECT tenant_id, tenant_name, default_embedding_model, status, create_time
+        FROM sys_tenant WHERE tenant_id = #{tenantId}
+    </select>
+
+    <select id="findByDefault" resultMap="TenantResultMap">
+        SELECT tenant_id, tenant_name, default_embedding_model, status, create_time
+        FROM sys_tenant
+        <where>
+            <if test="tenantName != null and tenantName != ''">
+                tenant_name = #{tenantName}
+            </if>
+        </where>
+        LIMIT 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="tenantId" keyColumn="tenant_id">
+        INSERT INTO sys_tenant (tenant_name, default_embedding_model, status, create_time)
+        VALUES (#{tenantName}, #{defaultEmbeddingModel}, #{status}, #{createTime})
+    </insert>
+
+    <update id="updateStatus">
+        UPDATE sys_tenant SET status = #{status} WHERE tenant_id = #{tenantId}
+    </update>
+
+    <update id="updateDefaultEmbeddingModel">
+        UPDATE sys_tenant SET default_embedding_model = #{defaultEmbeddingModel}
+        WHERE tenant_id = #{tenantId}
+    </update>
+
+</mapper>

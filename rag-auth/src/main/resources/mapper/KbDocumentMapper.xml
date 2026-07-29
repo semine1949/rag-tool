@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.rag.auth.mapper.KbDocumentMapper">
+
+    <resultMap id="KbDocumentResultMap" type="com.rag.core.entity.KbDocument">
+        <id property="docId" column="doc_id"/>
+        <result property="kbId" column="kb_id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="fileName" column="file_name"/>
+        <result property="fileType" column="file_type"/>
+        <result property="chunkCount" column="chunk_count"/>
+        <result property="version" column="version"/>
+        <result property="ownerId" column="owner_id"/>
+        <result property="collectionName" column="collection_name"/>
+        <result property="uploadTime" column="upload_time"/>
+    </resultMap>
+
+    <select id="findById" resultMap="KbDocumentResultMap">
+        SELECT doc_id, kb_id, tenant_id, file_name, file_type, chunk_count,
+               version, owner_id, collection_name, upload_time
+        FROM kb_document WHERE doc_id = #{docId}
+    </select>
+
+    <select id="findByFileId" resultMap="KbDocumentResultMap">
+        SELECT doc_id, kb_id, tenant_id, file_name, file_type, chunk_count,
+               version, owner_id, collection_name, upload_time
+        FROM kb_document WHERE doc_id = #{fileId}
+    </select>
+
+    <select id="findByKbId" resultMap="KbDocumentResultMap">
+        SELECT doc_id, kb_id, tenant_id, file_name, file_type, chunk_count,
+               version, owner_id, collection_name, upload_time
+        FROM kb_document WHERE kb_id = #{kbId} ORDER BY upload_time DESC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="docId" keyColumn="doc_id">
+        INSERT INTO kb_document (kb_id, tenant_id, file_name, file_type, chunk_count,
+                                 version, owner_id, collection_name, upload_time)
+        VALUES (#{kbId}, #{tenantId}, #{fileName}, #{fileType}, #{chunkCount},
+                #{version}, #{ownerId}, #{collectionName}, #{uploadTime})
+    </insert>
+
+    <delete id="deleteByFileId">
+        DELETE FROM kb_document WHERE doc_id = #{fileId}
+    </delete>
+
+    <update id="updateChunkCount">
+        UPDATE kb_document SET chunk_count = #{chunkCount} WHERE doc_id = #{fileId}
+    </update>
+
+</mapper>

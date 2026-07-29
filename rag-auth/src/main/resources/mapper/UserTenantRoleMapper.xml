@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.rag.auth.mapper.UserTenantRoleMapper">
+
+    <resultMap id="UserTenantRoleResultMap" type="com.rag.core.entity.UserTenantRole">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="roleId" column="role_id"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <select id="findByUserAndTenant" resultMap="UserTenantRoleResultMap">
+        SELECT id, user_id, tenant_id, role_id, create_time
+        FROM user_tenant_role WHERE user_id = #{userId} AND tenant_id = #{tenantId}
+    </select>
+
+    <select id="findByUserId" resultMap="UserTenantRoleResultMap">
+        SELECT id, user_id, tenant_id, role_id, create_time
+        FROM user_tenant_role WHERE user_id = #{userId}
+    </select>
+
+    <select id="findByTenantId" resultMap="UserTenantRoleResultMap">
+        SELECT id, user_id, tenant_id, role_id, create_time
+        FROM user_tenant_role WHERE tenant_id = #{tenantId}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO user_tenant_role (user_id, tenant_id, role_id, create_time)
+        VALUES (#{userId}, #{tenantId}, #{roleId}, #{createTime})
+    </insert>
+
+    <update id="updateRole">
+        UPDATE user_tenant_role SET role_id = #{roleId} WHERE id = #{id}
+    </update>
+
+    <delete id="delete">
+        DELETE FROM user_tenant_role WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteByUserAndTenant">
+        DELETE FROM user_tenant_role WHERE user_id = #{userId} AND tenant_id = #{tenantId}
+    </delete>
+
+</mapper>
