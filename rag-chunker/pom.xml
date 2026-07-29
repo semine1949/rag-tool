@@ -18,6 +18,11 @@
             <groupId>com.rag</groupId>
             <artifactId>rag-core</artifactId>
         </dependency>
+        <!-- Spring AI：TextSplitter / Document -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-commons</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.apache.opennlp</groupId>
             <artifactId>opennlp-tools</artifactId>

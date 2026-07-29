@@ -6,31 +6,35 @@ import com.rag.auth.service.*;
 import com.rag.boot.interceptor.JwtAuthInterceptor;
 import com.rag.chunker.ChunkerFactory;
 import com.rag.chunker.impl.*;
-import com.rag.core.api.*;
 import com.rag.core.config.EmbeddingProperties;
 import com.rag.core.enums.ChunkStrategyEnum;
-import com.rag.core.enums.EmbeddingModelType;
-import com.rag.embedding.EmbeddingFactory;
-import com.rag.embedding.impl.*;
+import com.rag.core.factory.EmbeddingModelFactory;
+import com.rag.core.factory.VectorStoreRegistry;
 import com.rag.parser.DocumentParseFactory;
 import com.rag.parser.impl.*;
-import com.rag.weaviate.WeaviateVectorStore;
 import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.ai.document.DocumentReader;
+import org.springframework.ai.reader.tika.TikaDocumentReader;
+import org.springframework.ai.transformer.splitter.TextSplitter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.io.File;
+import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.function.Function;
 
 /**
- * 核心Bean配置
+ * 核心Bean配置（Spring AI 重构版）
  */
 @Configuration
 @MapperScan("com.rag.auth.mapper")
@@ -72,68 +76,75 @@ public class RagCoreConfig implements WebMvcConfigurer {
 
     @Bean
     public DocumentParseFactory documentParseFactory(DeepSeekOcrClient deepSeekOcrClient) {
-        TextParser textParser = new TextParser();
-        DeepSeekOcrParser ocrParser = new DeepSeekOcrParser(deepSeekOcrClient);
+        Map<com.rag.core.enums.FileTypeEnum, Function<File, DocumentReader>> suppliers =
+                new EnumMap<>(com.rag.core.enums.FileTypeEnum.class);
 
-        Map<com.rag.core.enums.FileTypeEnum, com.rag.core.api.DocumentParser> parserMap = Map.ofEntries(
-                Map.entry(com.rag.core.enums.FileTypeEnum.TXT, textParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.MD, textParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.MARKDOWN, textParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.JPG, ocrParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.JPEG, ocrParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.PNG, ocrParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.BMP, ocrParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.PDF, ocrParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.DOCX, ocrParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.DOC, ocrParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.PPTX, ocrParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.PPT, ocrParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.XLSX, ocrParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.XLS, ocrParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.HTML, ocrParser),
-                Map.entry(com.rag.core.enums.FileTypeEnum.HTM, ocrParser)
-        );
-        return new DocumentParseFactory(parserMap);
+        // 策略1：文本类型 → Apache Tika
+        Function<File, DocumentReader> tikaReader = f -> new TikaDocumentReader(new FileSystemResource(f));
+        // 策略2：文本+图片混合文档 → Tika 文本提取 + 内嵌图片多模态 OCR
+        Function<File, DocumentReader> mixedReader = f -> new TikaOcrMixedParser(deepSeekOcrClient, f);
+        // 策略3：纯图片 → 多模态 OCR
+        Function<File, DocumentReader> ocrReader = f -> new DeepSeekOcrParser(deepSeekOcrClient, f);
+        // 策略4：Excel → 已有 ExcelParser
+        Function<File, DocumentReader> excelReader = f -> new ExcelParser(f);
+
+        // 文本类型：TXT / MD / MARKDOWN / HTML / HTM
+        suppliers.put(com.rag.core.enums.FileTypeEnum.TXT, tikaReader);
+        suppliers.put(com.rag.core.enums.FileTypeEnum.MD, tikaReader);
+        suppliers.put(com.rag.core.enums.FileTypeEnum.MARKDOWN, tikaReader);
+        suppliers.put(com.rag.core.enums.FileTypeEnum.HTML, tikaReader);
+        suppliers.put(com.rag.core.enums.FileTypeEnum.HTM, tikaReader);
+
+        // 混合文档：PDF / DOC / DOCX / PPT / PPTX
+        suppliers.put(com.rag.core.enums.FileTypeEnum.PDF, mixedReader);
+        suppliers.put(com.rag.core.enums.FileTypeEnum.DOC, mixedReader);
+        suppliers.put(com.rag.core.enums.FileTypeEnum.DOCX, mixedReader);
+        suppliers.put(com.rag.core.enums.FileTypeEnum.PPT, mixedReader);
+        suppliers.put(com.rag.core.enums.FileTypeEnum.PPTX, mixedReader);
+
+        // 纯图片：JPG / JPEG / PNG / BMP
+        suppliers.put(com.rag.core.enums.FileTypeEnum.JPG, ocrReader);
+        suppliers.put(com.rag.core.enums.FileTypeEnum.JPEG, ocrReader);
+        suppliers.put(com.rag.core.enums.FileTypeEnum.PNG, ocrReader);
+        suppliers.put(com.rag.core.enums.FileTypeEnum.BMP, ocrReader);
+
+        // Excel：XLS / XLSX
+        suppliers.put(com.rag.core.enums.FileTypeEnum.XLSX, excelReader);
+        suppliers.put(com.rag.core.enums.FileTypeEnum.XLS, excelReader);
+
+        return new DocumentParseFactory(suppliers);
     }
 
     // ==================== 分片器配置 ====================
 
     @Bean
     public ChunkerFactory chunkerFactory() {
-        Map<ChunkStrategyEnum, TextChunker> chunkerMap = Map.of(
-                ChunkStrategyEnum.FIXED_SIZE, new FixedSizeChunker(),
-                ChunkStrategyEnum.SEMANTIC, new SemanticChunker(),
-                ChunkStrategyEnum.TABLE, new TableChunker(),
-                ChunkStrategyEnum.CODE_FUNCTION, new CodeFunctionChunker(),
-                ChunkStrategyEnum.TITLE_HIERARCHY, new TitleHierarchyChunker(),
-                ChunkStrategyEnum.PARENT_CHILD, new ParentChildChunker()
-        );
+        Map<ChunkStrategyEnum, TextSplitter> chunkerMap = new EnumMap<>(ChunkStrategyEnum.class);
+        chunkerMap.put(ChunkStrategyEnum.SEMANTIC, new SemanticChunker());
+        chunkerMap.put(ChunkStrategyEnum.TABLE, new TableChunker());
+        chunkerMap.put(ChunkStrategyEnum.CODE_FUNCTION, new CodeFunctionChunker());
+        chunkerMap.put(ChunkStrategyEnum.TITLE_HIERARCHY, new TitleHierarchyChunker());
+        chunkerMap.put(ChunkStrategyEnum.PARENT_CHILD, new ParentChildChunker());
+        // FIXED_SIZE 由框架 RecursiveCharacterTextSplitter 在 ChunkerFactory 内处理
         return new ChunkerFactory(chunkerMap);
     }
 
-    // ==================== Embedding工厂配置 ====================
+    // ==================== Embedding / 向量库（Spring AI） ====================
 
     @Bean
-    public EmbeddingFactory embeddingFactory() {
-        Map<EmbeddingModelType, EmbeddingClient> clientMap = Map.of(
-                EmbeddingModelType.BGE_M3, new BgeM3EmbeddingClient(),
-                EmbeddingModelType.TONGYI, new TongyiEmbeddingClient(),
-                EmbeddingModelType.OPENAI, new OpenAiEmbeddingClient()
-        );
-        return new EmbeddingFactory(clientMap);
+    public EmbeddingModelFactory embeddingModelFactory(EmbeddingProperties embeddingProperties) {
+        return new EmbeddingModelFactory(embeddingProperties);
     }
 
-    // ==================== 向量存储配置 ====================
-
-    @Value("${rag.weaviate.url:http://localhost:8080}")
+    @Value("${rag.weaviate.url:}")
     private String weaviateUrl;
 
     @Value("${rag.weaviate.token:}")
     private String weaviateToken;
 
     @Bean
-    public VectorStore vectorStore() {
-        return new WeaviateVectorStore(weaviateUrl, weaviateToken);
+    public VectorStoreRegistry vectorStoreRegistry() {
+        return new VectorStoreRegistry(weaviateUrl, weaviateToken);
     }
 
     // ==================== 密码加密 ====================
@@ -178,12 +189,9 @@ public class RagCoreConfig implements WebMvcConfigurer {
 
     @Bean
     public KbConfigService kbConfigService(KnowledgeBaseMapper kbMapper,
-                                           VectorStore vectorStore,
-                                           EmbeddingProperties embeddingProperties,
-                                           KbRolePermissionMapper kbRolePermissionMapper,
-                                           RoleMapper roleMapper) {
-        return new KbConfigService(kbMapper, vectorStore, embeddingProperties,
-                kbRolePermissionMapper, roleMapper);
+                                           VectorStoreRegistry vectorStoreRegistry,
+                                           EmbeddingProperties embeddingProperties) {
+        return new KbConfigService(kbMapper, vectorStoreRegistry, embeddingProperties);
     }
 
     @Bean

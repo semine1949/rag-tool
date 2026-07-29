@@ -49,6 +49,8 @@ rag:
     # Qwen3 Embedding 配置（当模型名含 qwen/tongyi 时生效，走硅基流动）
     tongyi:
       api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+      # 硅基流动 Base URL（客户端会自动追加 /embeddings）
+      base-url: https://api.siliconflow.cn/v1
       # 硅基流动模型名
       model: Qwen/Qwen3-Embedding-0.6B
       # 向量维度（需与 Weaviate 集合维度一致）
@@ -77,6 +79,8 @@ rag:
   # ---------- Weaviate向量库配置 ----------
   weaviate:
     url: http://192.168.71.12:8080
+    # 访问令牌（Weaviate 开启鉴权时填写，否则留空）
+    token: ${RAG_WEAVIATE_TOKEN:}
     collection: Document_V1
 
   # ---------- 鉴权与安全配置（需求6-7） ----------

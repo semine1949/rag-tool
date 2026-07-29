@@ -28,16 +28,12 @@
         </dependency>
         <dependency>
             <groupId>com.rag</groupId>
-            <artifactId>rag-embedding</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.rag</groupId>
-            <artifactId>rag-weaviate</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.rag</groupId>
             <artifactId>rag-auth</artifactId>
         </dependency>
+
+        <!-- Spring AI 基础接口（EmbeddingModel / VectorStore / Document / TextSplitter）随 rag-core 传递引入。
+             具体连接器（OpenAI 兼容 Embedding、Weaviate）由 rag-core 基于接口自行实现，
+             因 spring-ai-model-openai / spring-ai-vector-store-weaviate 连接器本地镜像中不可用。 -->
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

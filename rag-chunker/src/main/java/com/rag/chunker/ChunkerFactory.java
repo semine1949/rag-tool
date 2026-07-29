@@ -1,108 +1,92 @@
 package com.rag.chunker;
 
-import com.rag.core.api.TextChunker;
 import com.rag.core.config.ChunkConfig;
-import com.rag.core.entity.Chunk;
-import com.rag.core.entity.DocumentParseResult;
 import com.rag.core.enums.ChunkStrategyEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.transformer.splitter.TextSplitter;
 
 import java.util.*;
 
 /**
- * 分片工厂 - 支持单策略/多策略组合切割
- * 策略执行顺序：先分离表格、代码块单独分片 → 正文按标题分层切割 → 语义/固定长度切割 → 父子关联分片
+ * 分片工厂（协调器）：按启用策略组合切割。
+ * <p>
+ * 执行顺序：先分离表格 / 代码块单独分片 → 正文按标题分层切割 →
+ * 语义 / 固定长度切割（固定长度使用框架 {@link RecursiveCharacterTextSplitter}）→ 父子关联分片。
  */
-public class ChunkerFactory implements TextChunker {
+public class ChunkerFactory {
 
     private static final Logger log = LoggerFactory.getLogger(ChunkerFactory.class);
 
-    private final Map<ChunkStrategyEnum, TextChunker> chunkerMap;
+    private final Map<ChunkStrategyEnum, TextSplitter> chunkerMap;
 
-    public ChunkerFactory(Map<ChunkStrategyEnum, TextChunker> chunkerMap) {
+    public ChunkerFactory(Map<ChunkStrategyEnum, TextSplitter> chunkerMap) {
         this.chunkerMap = chunkerMap;
     }
 
-    @Override
-    public List<Chunk> chunk(DocumentParseResult parseResult, ChunkConfig config) {
+    public List<Document> chunk(List<Document> documents, ChunkConfig config) {
         Set<ChunkStrategyEnum> strategies = config.getEnableStrategies();
         if (strategies == null || strategies.isEmpty()) {
             log.warn("未配置分片策略，使用默认固定长度分片");
             strategies = Set.of(ChunkStrategyEnum.FIXED_SIZE);
         }
 
-        List<Chunk> allChunks = new ArrayList<>();
+        List<Document> allChunks = new ArrayList<>();
 
-        // 定义执行顺序
-        List<ChunkStrategyEnum> executionOrder = buildExecutionOrder(strategies);
+        // 注入知识库级配置
+        for (TextSplitter s : chunkerMap.values()) {
+            if (s instanceof ConfigurableTextSplitter c) {
+                c.setConfig(config);
+            }
+        }
 
-        // 第一阶段：先处理表格和代码块
-        List<Chunk> tableChunks = executeStrategy(strategies, ChunkStrategyEnum.TABLE, parseResult, config);
-        List<Chunk> codeChunks = executeStrategy(strategies, ChunkStrategyEnum.CODE_FUNCTION, parseResult, config);
-        allChunks.addAll(tableChunks);
-        allChunks.addAll(codeChunks);
+        // 第一阶段：表格、代码块
+        allChunks.addAll(run(strategies, ChunkStrategyEnum.TABLE, documents));
+        allChunks.addAll(run(strategies, ChunkStrategyEnum.CODE_FUNCTION, documents));
 
-        // 第二阶段：正文文本执行标题分层分片
-        List<Chunk> titleChunks = executeStrategy(strategies, ChunkStrategyEnum.TITLE_HIERARCHY, parseResult, config);
-
-        // 第三阶段：对标题分片结果或原始文本进行语义/固定长度分片
-        List<Chunk> bodyChunks;
+        // 第二阶段：标题分层（优先），否则语义，否则固定长度
+        List<Document> titleChunks = run(strategies, ChunkStrategyEnum.TITLE_HIERARCHY, documents);
+        List<Document> bodyChunks;
         if (!titleChunks.isEmpty()) {
             bodyChunks = titleChunks;
         } else {
-            bodyChunks = executeStrategy(strategies, ChunkStrategyEnum.SEMANTIC, parseResult, config);
-            if (bodyChunks.isEmpty()) {
-                bodyChunks = executeStrategy(strategies, ChunkStrategyEnum.FIXED_SIZE, parseResult, config);
-            }
+            List<Document> sem = run(strategies, ChunkStrategyEnum.SEMANTIC, documents);
+            bodyChunks = sem.isEmpty() ? runFixed(strategies, documents, config) : sem;
         }
         allChunks.addAll(bodyChunks);
 
         // 第四阶段：父子分片
-        List<Chunk> parentChildChunks = executeStrategy(strategies, ChunkStrategyEnum.PARENT_CHILD, parseResult, config);
-        allChunks.addAll(parentChildChunks);
-
-        // 生成chunkId
-        for (int i = 0; i < allChunks.size(); i++) {
-            Chunk c = allChunks.get(i);
-            if (c.getChunkId() == null) {
-                c.setChunkId(UUID.randomUUID().toString());
-            }
-        }
+        allChunks.addAll(run(strategies, ChunkStrategyEnum.PARENT_CHILD, documents));
 
         log.info("分片完成，共生成 {} 个Chunk", allChunks.size());
         return allChunks;
     }
 
-    @Override
-    public ChunkStrategyEnum getStrategy() {
-        return null; // 工厂本身不代表单一策略
-    }
-
-    private List<Chunk> executeStrategy(Set<ChunkStrategyEnum> strategies, ChunkStrategyEnum strategy,
-                                        DocumentParseResult parseResult, ChunkConfig config) {
-        if (strategies.contains(strategy)) {
-            TextChunker chunker = chunkerMap.get(strategy);
-            if (chunker != null) {
-                try {
-                    return chunker.chunk(parseResult, config);
-                } catch (Exception e) {
-                    log.error("分片策略 {} 执行失败: {}", strategy, e.getMessage(), e);
-                }
-            }
+    private List<Document> run(Set<ChunkStrategyEnum> strategies, ChunkStrategyEnum strategy,
+                               List<Document> documents) {
+        if (!strategies.contains(strategy)) {
+            return List.of();
         }
-        return List.of();
+        TextSplitter splitter = chunkerMap.get(strategy);
+        if (splitter == null) {
+            return List.of();
+        }
+        try {
+            return splitter.apply(documents);
+        } catch (Exception e) {
+            log.error("分片策略 {} 执行失败: {}", strategy, e.getMessage(), e);
+            return List.of();
+        }
     }
 
-    private List<ChunkStrategyEnum> buildExecutionOrder(Set<ChunkStrategyEnum> strategies) {
-        List<ChunkStrategyEnum> order = new ArrayList<>();
-        // 按处理顺序排列
-        if (strategies.contains(ChunkStrategyEnum.TABLE)) order.add(ChunkStrategyEnum.TABLE);
-        if (strategies.contains(ChunkStrategyEnum.CODE_FUNCTION)) order.add(ChunkStrategyEnum.CODE_FUNCTION);
-        if (strategies.contains(ChunkStrategyEnum.TITLE_HIERARCHY)) order.add(ChunkStrategyEnum.TITLE_HIERARCHY);
-        if (strategies.contains(ChunkStrategyEnum.SEMANTIC)) order.add(ChunkStrategyEnum.SEMANTIC);
-        if (strategies.contains(ChunkStrategyEnum.FIXED_SIZE)) order.add(ChunkStrategyEnum.FIXED_SIZE);
-        if (strategies.contains(ChunkStrategyEnum.PARENT_CHILD)) order.add(ChunkStrategyEnum.PARENT_CHILD);
-        return order;
+    private List<Document> runFixed(Set<ChunkStrategyEnum> strategies, List<Document> documents, ChunkConfig config) {
+        if (!strategies.contains(ChunkStrategyEnum.FIXED_SIZE)) {
+            return List.of();
+        }
+        int chunkSize = config.getFixedChunkSize() != null ? config.getFixedChunkSize() : 500;
+        int overlap = config.getSlideOverlap() != null ? config.getSlideOverlap() : 50;
+        TextSplitter splitter = new RecursiveCharacterTextSplitter(chunkSize, overlap);
+        return splitter.apply(documents);
     }
 }

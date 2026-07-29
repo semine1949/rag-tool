@@ -15,8 +15,6 @@
         <module>rag-core</module>
         <module>rag-parser</module>
         <module>rag-chunker</module>
-        <module>rag-embedding</module>
-        <module>rag-weaviate</module>
         <module>rag-auth</module>
         <module>rag-admin-boot</module>
     </modules>
@@ -28,14 +26,14 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- SpringBoot -->
-        <spring-boot.version>3.2.0</spring-boot.version>
+        <spring-boot.version>3.4.5</spring-boot.version>
+
+        <!-- Spring AI -->
+        <spring-ai.version>1.0.0</spring-ai.version>
 
         <!-- 文本处理 -->
         <commons-text.version>1.11.0</commons-text.version>
         <opennlp.version>2.3.0</opennlp.version>
-
-        <!-- 向量库 -->
-        <weaviate-client.version>4.6.0</weaviate-client.version>
 
         <!-- 工具 -->
         <okhttp.version>4.12.0</okhttp.version>
@@ -52,6 +50,15 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
                 <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Spring AI BOM -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -74,16 +81,6 @@
             </dependency>
             <dependency>
                 <groupId>com.rag</groupId>
-                <artifactId>rag-embedding</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.rag</groupId>
-                <artifactId>rag-weaviate</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.rag</groupId>
                 <artifactId>rag-auth</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -100,13 +97,6 @@
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-text</artifactId>
                 <version>${commons-text.version}</version>
-            </dependency>
-
-            <!-- Weaviate Java Client -->
-            <dependency>
-                <groupId>io.weaviate</groupId>
-                <artifactId>client</artifactId>
-                <version>${weaviate-client.version}</version>
             </dependency>
 
             <!-- OkHttp -->

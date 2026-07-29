@@ -44,7 +44,7 @@ public class RagController {
         try {
             Long userId = requireAuth();
             kbAccessService.checkUploadPermission(userId, kbId);
-            FileProcessResult result = ragToolService.processFile(file, kbId, userId);
+            FileProcessResult result = ragToolService.processFile(file, kbId, null);
             return ResponseEntity.ok(Map.of("code", 200, "data", result));
         } catch (Exception e) {
             log.error("文件上传处理失败", e);
@@ -67,7 +67,7 @@ public class RagController {
             }
             kbAccessService.checkUploadPermission(userId, kbId);
             CompletableFuture<List<FileProcessResult>> future =
-                    ragToolService.batchProcessFiles(files, kbId, userId);
+                    ragToolService.batchProcessFiles(files, kbId);
             return ResponseEntity.ok(Map.of("code", 200, "msg", "批量任务已提交"));
         } catch (Exception e) {
             log.error("批量上传处理失败", e);
@@ -84,7 +84,7 @@ public class RagController {
             Long userId = requireAuth();
             kbAccessService.checkUploadPermission(userId, request.getKbId());
             List<FileProcessResult> results = ragToolService.processDirectory(
-                    request.getDirPath(), request.getKbId(), userId);
+                    request.getDirPath(), request.getKbId());
             return ResponseEntity.ok(Map.of("code", 200, "data", results));
         } catch (Exception e) {
             log.error("文件夹处理失败", e);
@@ -105,7 +105,7 @@ public class RagController {
         try {
             Long userId = requireAuth();
             kbAccessService.checkViewPermission(userId, kbId);
-            List<FileProcessResult> results = ragToolService.search(kbId, userId, query, topK);
+            List<FileProcessResult> results = ragToolService.search(query, kbId, topK);
             return ResponseEntity.ok(Map.of("code", 200, "data", results));
         } catch (Exception e) {
             log.error("检索失败", e);

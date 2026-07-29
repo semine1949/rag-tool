@@ -1,62 +1,39 @@
 package com.rag.boot.service;
 
+import lombok.Builder;
+import lombok.Data;
+
 /**
- * 文件处理结果
+ * 文件处理结果 / 检索结果
  */
+@Data
+@Builder
 public class FileProcessResult {
+
+    /** 文档ID（=解析阶段生成的 fileId） */
     private String fileId;
+
+    /** 文件名 */
     private String fileName;
+
+    /** 切片数量 */
     private Integer chunkCount;
+
+    /** 入库切片数量 */
     private Integer insertedCount;
+
+    /** 是否成功 */
     private Boolean success;
-    private String error;
 
-    public static Builder builder() {
-        return new Builder();
-    }
+    /** 失败信息 */
+    private String message;
 
-    public static class Builder {
-        private String fileId;
-        private String fileName;
-        private Integer chunkCount;
-        private Integer insertedCount;
-        private Boolean success;
-        private String error;
+    /** 检索命中时的文本片段 */
+    private String snippet;
 
-        public Builder fileId(String fileId) { this.fileId = fileId; return this; }
-        public Builder fileName(String fileName) { this.fileName = fileName; return this; }
-        public Builder chunkCount(Integer chunkCount) { this.chunkCount = chunkCount; return this; }
-        public Builder insertedCount(Integer insertedCount) { this.insertedCount = insertedCount; return this; }
-        public Builder success(Boolean success) { this.success = success; return this; }
-        public Builder error(String error) { this.error = error; return this; }
+    /** 检索相似度得分 */
+    private Double score;
 
-        public FileProcessResult build() {
-            FileProcessResult r = new FileProcessResult();
-            r.fileId = this.fileId;
-            r.fileName = this.fileName;
-            r.chunkCount = this.chunkCount;
-            r.insertedCount = this.insertedCount;
-            r.success = this.success;
-            r.error = this.error;
-            return r;
-        }
-    }
-
-    public String getFileId() { return fileId; }
-    public void setFileId(String fileId) { this.fileId = fileId; }
-
-    public String getFileName() { return fileName; }
-    public void setFileName(String fileName) { this.fileName = fileName; }
-
-    public Integer getChunkCount() { return chunkCount; }
-    public void setChunkCount(Integer chunkCount) { this.chunkCount = chunkCount; }
-
-    public Integer getInsertedCount() { return insertedCount; }
-    public void setInsertedCount(Integer insertedCount) { this.insertedCount = insertedCount; }
-
-    public Boolean getSuccess() { return success; }
-    public void setSuccess(Boolean success) { this.success = success; }
-
-    public String getError() { return error; }
-    public void setError(String error) { this.error = error; }
+    /** 文档版本 */
+    private String documentVersion;
 }

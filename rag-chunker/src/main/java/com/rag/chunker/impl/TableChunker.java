@@ -1,71 +1,100 @@
 package com.rag.chunker.impl;
 
-import com.rag.core.api.TextChunker;
+import com.rag.chunker.ConfigurableTextSplitter;
+import com.rag.chunker.util.ChunkDocuments;
 import com.rag.core.config.ChunkConfig;
-import com.rag.core.entity.*;
 import com.rag.core.enums.ChunkStrategyEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.document.Document;
 
 import java.util.*;
 
 /**
- * 表格独立分片策略
- * 每个表格单独生成Chunk，附带表格行列元数据
+ * 表格独立分片策略：从文本中抽取 Markdown 表格，每个表格单独生成切片并附带行列元数据。
+ * 实现 Spring AI {@link ConfigurableTextSplitter}，产出 {@link Document} 列表。
  */
-public class TableChunker implements TextChunker {
+public class TableChunker extends ConfigurableTextSplitter {
 
     private static final Logger log = LoggerFactory.getLogger(TableChunker.class);
+    private ChunkConfig config;
 
     @Override
-    public List<Chunk> chunk(DocumentParseResult parseResult, ChunkConfig config) {
-        if (!Boolean.TRUE.equals(config.getSplitTableSingleChunk())) {
+    public void setConfig(ChunkConfig config) {
+        this.config = config;
+    }
+
+    @Override
+    public List<Document> apply(List<Document> documents) {
+        if (config == null || !Boolean.TRUE.equals(config.getSplitTableSingleChunk())) {
             return List.of();
         }
-
-        List<TableUnit> tables = parseResult.getTableList();
-        if (tables == null || tables.isEmpty()) {
+        String text = ChunkDocuments.fullText(documents);
+        if (text.isEmpty()) {
             return List.of();
         }
+        Document input = documents.get(0);
+        List<Document> chunks = new ArrayList<>();
+        for (String table : extractMarkdownTables(text)) {
+            String[] lines = table.split("\n");
+            int rowCount = Math.max(0, lines.length - 2);
+            int colCount = lines.length > 0 ? Math.max(0, lines[0].split("\\|", -1).length - 2) : 0;
 
-        List<Chunk> chunks = new ArrayList<>();
-        for (TableUnit table : tables) {
             Map<String, Object> tableMeta = new HashMap<>();
-            tableMeta.put("tableId", table.getTableId());
-            tableMeta.put("rowCount", table.getRowCount());
-            tableMeta.put("colCount", table.getColCount());
-            tableMeta.put("sheetName", table.getSheetName());
-            tableMeta.put("headers", table.getHeaders());
+            tableMeta.put("rowCount", rowCount);
+            tableMeta.put("colCount", colCount);
 
-            Map<String, Object> extraMeta = new HashMap<>();
-            extraMeta.put("tableFlag", true);
+            Map<String, Object> extra = new HashMap<>();
+            extra.put("tableFlag", true);
+            extra.put("tableMeta", tableMeta);
 
-            chunks.add(Chunk.builder()
-                    .chunkId(UUID.randomUUID().toString())
-                    .text(table.getContent())
-                    .chunkType(ChunkStrategyEnum.TABLE)
-                    .textHash(hash(table.getContent()))
-                    .fileName(parseResult.getMeta() != null ? parseResult.getMeta().getFileName() : null)
-                    .fileType(parseResult.getMeta() != null ? parseResult.getMeta().getFileType() : null)
-                    .fileId(parseResult.getMeta() != null ? parseResult.getMeta().getFileId() : null)
-                    .pageNo(table.getPageNo())
-                    .tableMeta(tableMeta)
-                    .extraMeta(extraMeta)
-                    .build());
+            chunks.add(ChunkDocuments.of(input, table, ChunkStrategyEnum.TABLE.name(), extra));
         }
-
         log.debug("表格分片完成，生成{}个chunk", chunks.size());
         return chunks;
     }
 
-    @Override
-    public ChunkStrategyEnum getStrategy() {
-        return ChunkStrategyEnum.TABLE;
+    private List<String> extractMarkdownTables(String text) {
+        List<String> tables = new ArrayList<>();
+        String[] lines = text.split("\n");
+        StringBuilder current = null;
+        for (String line : lines) {
+            String trimmed = line.trim();
+            boolean isTableLine = trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.length() > 1;
+            if (isTableLine) {
+                if (current == null) {
+                    current = new StringBuilder();
+                }
+                current.append(line).append("\n");
+            } else {
+                if (current != null) {
+                    String t = current.toString().trim();
+                    if (isLikelyTable(t)) {
+                        tables.add(t);
+                    }
+                    current = null;
+                }
+            }
+        }
+        if (current != null) {
+            String t = current.toString().trim();
+            if (isLikelyTable(t)) {
+                tables.add(t);
+            }
+        }
+        return tables;
     }
 
-    private String hash(String text) {
-        int h = 0;
-        for (char c : text.toCharArray()) h = 31 * h + c;
-        return Integer.toHexString(h);
+    private boolean isLikelyTable(String block) {
+        String[] lines = block.split("\n");
+        if (lines.length < 2) {
+            return false;
+        }
+        for (String line : lines) {
+            if (line.trim().matches("^\\|?[:\\s\\-]+\\|?$") && line.contains("-")) {
+                return true;
+            }
+        }
+        return false;
     }
 }

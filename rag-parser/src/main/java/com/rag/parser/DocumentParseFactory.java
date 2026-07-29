@@ -1,67 +1,59 @@
 package com.rag.parser;
 
-import com.rag.core.api.DocumentParser;
-import com.rag.core.entity.*;
 import com.rag.core.enums.FileTypeEnum;
+import com.rag.core.exception.RagException;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.document.DocumentReader;
 
 import java.io.File;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.function.Function;
 
 /**
- * 文档解析工厂 - 根据文件类型自动匹配解析器
+ * 文档解析工厂 - 根据文件类型自动匹配 Spring AI {@link DocumentReader} 并解析为 {@link Document} 列表。
+ * <p>
+ * 文本 / Markdown 交由框架 {@code TextReader}；HTML / PDF 交由框架 {@code TikaDocumentReader}；
+ * Excel 与 Word/PPT/图片等交由自研（OCR / POI）解析器。
  */
 public class DocumentParseFactory {
 
-    private final Map<FileTypeEnum, DocumentParser> parserMap;
+    private final Map<FileTypeEnum, Function<File, DocumentReader>> readerSuppliers;
 
-    public DocumentParseFactory(Map<FileTypeEnum, DocumentParser> parserMap) {
-        this.parserMap = parserMap;
+    public DocumentParseFactory(Map<FileTypeEnum, Function<File, DocumentReader>> readerSuppliers) {
+        this.readerSuppliers = readerSuppliers;
     }
 
     /**
-     * 根据文件自动匹配解析器并解析
+     * 根据文件自动匹配解析器并解析为 Document 列表。
+     * 解析后统一补充 fileId 元数据（单文件内所有切片共享，便于按文件删除）。
      */
-    public DocumentParseResult parse(File file) {
+    public List<Document> parse(File file) {
         String ext = getFileExtension(file.getName());
         FileTypeEnum type = FileTypeEnum.fromExtension(ext);
-        DocumentParser parser = parserMap.get(type);
-        if (parser == null) {
-            // 尝试用TEXT类型作为fallback
-            parser = parserMap.get(FileTypeEnum.TXT);
+        Function<File, DocumentReader> supplier = readerSuppliers.get(type);
+        if (supplier == null) {
+            supplier = readerSuppliers.get(FileTypeEnum.TXT);
         }
-        if (parser == null) {
-            throw new com.rag.core.exception.RagException("RAG_PARSE_001", "不支持的文件类型: " + ext);
+        if (supplier == null) {
+            throw new RagException("RAG_PARSE_001", "不支持的文件类型: " + ext);
         }
-        return parser.parse(file);
-    }
-
-    /**
-     * 解析FileSource
-     */
-    public DocumentParseResult parse(FileSource fileSource) {
-        String ext = getFileExtension(fileSource.getFileName());
-        FileTypeEnum type = FileTypeEnum.fromExtension(ext);
-        DocumentParser parser = parserMap.get(type);
-        if (parser == null) {
-            parser = parserMap.get(FileTypeEnum.TXT);
+        List<Document> docs = supplier.apply(file).get();
+        if (docs.isEmpty()) {
+            throw new RagException("RAG_PARSE_002", "解析结果为空: " + file.getName());
         }
-        if (parser == null) {
-            throw new com.rag.core.exception.RagException("RAG_PARSE_001", "不支持的文件类型: " + ext);
+        String fileId = UUID.randomUUID().toString();
+        for (Document doc : docs) {
+            doc.getMetadata().putIfAbsent("fileId", fileId);
         }
-        return parser.parse(fileSource);
+        return docs;
     }
 
     private String getFileExtension(String fileName) {
-        if (fileName == null || !fileName.contains(".")) return "";
+        if (fileName == null || !fileName.contains(".")) {
+            return "";
+        }
         return fileName.substring(fileName.lastIndexOf(".") + 1);
-    }
-
-    /**
-     * 获取所有已注册的解析器
-     */
-    public Map<FileTypeEnum, DocumentParser> getParsers() {
-        return parserMap;
     }
 }
