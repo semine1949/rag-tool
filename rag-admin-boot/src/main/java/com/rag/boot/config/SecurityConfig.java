@@ -37,8 +37,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // 认证接口放行：登录、注册、刷新Token
                 .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
-                // 其余 /api/** 需要认证
-                .requestMatchers("/api/**").authenticated()
+                // 其余 /api/** 放行，认证交由 JwtAuthInterceptor 处理
+                .requestMatchers("/api/**").permitAll()
                 // 其他路径放行
                 .anyRequest().permitAll()
             )
