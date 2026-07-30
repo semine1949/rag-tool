@@ -17,8 +17,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 管理员接口（新数据库设计）
- * 权限由 KbAccessService 基于 user_tenant_role + kb_role_permission 判定。
+ * 管理员接口（v2 重构：分片策略已从知识库下移到文档维度）
+ * <p>权限由 KbAccessService 基于 user_tenant_role + kb_role_permission 判定。</p>
  */
 @RestController
 @RequestMapping("/api/admin")
@@ -32,6 +32,7 @@ public class AdminController {
     private final RoleMapper roleMapper;
     private final UserTenantRoleMapper userTenantRoleMapper;
     private final KbRolePermissionMapper kbRolePermissionMapper;
+    private final KbDocumentMapper kbDocumentMapper;
     private final KbAccessService kbAccessService;
     private final KbConfigService kbConfigService;
     private final AuthServiceImpl authService;
@@ -42,6 +43,7 @@ public class AdminController {
                            RoleMapper roleMapper,
                            UserTenantRoleMapper userTenantRoleMapper,
                            KbRolePermissionMapper kbRolePermissionMapper,
+                           KbDocumentMapper kbDocumentMapper,
                            KbAccessService kbAccessService,
                            KbConfigService kbConfigService,
                            AuthServiceImpl authService) {
@@ -51,6 +53,7 @@ public class AdminController {
         this.roleMapper = roleMapper;
         this.userTenantRoleMapper = userTenantRoleMapper;
         this.kbRolePermissionMapper = kbRolePermissionMapper;
+        this.kbDocumentMapper = kbDocumentMapper;
         this.kbAccessService = kbAccessService;
         this.kbConfigService = kbConfigService;
         this.authService = authService;
@@ -81,7 +84,6 @@ public class AdminController {
     public ResponseEntity<?> listTenants() {
         requireAuth();
         List<Tenant> tenants = new ArrayList<>();
-        // 简易全量查询：通过角色关联反查所有租户成本较高，这里直接返回已关联租户集合
         Long userId = RequestContext.currentUserId();
         List<UserTenantRole> utrs = userTenantRoleMapper.findByUserId(userId);
         Set<Long> tenantIds = utrs.stream().map(UserTenantRole::getTenantId).collect(Collectors.toSet());
@@ -149,8 +151,11 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("code", 200, "data", roleMapper.findAll()));
     }
 
-    // ==================== 知识库管理 ====================
+    // ==================== 知识库管理（v2：chunk 策略已移至文档维度） ====================
 
+    /**
+     * 创建知识库（v2：仅需 embedding_model，chunk 策略由文档维度独立配置）
+     */
     @PostMapping("/kb")
     public ResponseEntity<?> createKnowledgeBase(@RequestBody Map<String, Object> body) {
         Long userId = requireAuth();
@@ -162,9 +167,6 @@ public class AdminController {
 
         String kbName = (String) body.get("kbName");
         String description = (String) body.get("description");
-        String chunkStrategy = (String) body.get("chunkStrategy");
-        Integer chunkSize = objToInt(body.get("chunkSize"));
-        Integer chunkOverlap = objToInt(body.get("chunkOverlap"));
         String embeddingModel = (String) body.get("embeddingModel");
         if (embeddingModel == null || embeddingModel.isBlank()) {
             Tenant tenant = tenantMapper.findById(tenantId);
@@ -175,7 +177,7 @@ public class AdminController {
         }
 
         KnowledgeBase kb = kbConfigService.createKnowledgeBase(
-                tenantId, kbName, description, chunkStrategy, chunkSize, chunkOverlap, embeddingModel);
+                tenantId, kbName, description, embeddingModel);
         return ResponseEntity.ok(Map.of("code", 200, "data", kb));
     }
 
@@ -193,16 +195,41 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("code", 200, "data", buildConfigView(kbId)));
     }
 
+    /**
+     * 更新知识库配置（v2：仅支持更新 embedding_model）
+     */
     @PutMapping("/kb/{kbId}/config")
     public ResponseEntity<?> updateKbConfig(@PathVariable Long kbId, @RequestBody Map<String, Object> body) {
         Long userId = requireAuth();
         kbAccessService.checkAdminPermission(userId, kbId);
-        String chunkStrategy = (String) body.get("chunkStrategy");
+        String embeddingModel = (String) body.get("embeddingModel");
+        if (embeddingModel != null && !embeddingModel.isBlank()) {
+            kbConfigService.updateKbEmbeddingModel(kbId, embeddingModel);
+        }
+        return ResponseEntity.ok(Map.of("code", 200, "msg", "配置更新成功"));
+    }
+
+    // ==================== v2 新增：文档维度分片策略配置 ====================
+
+    /**
+     * 更新文档维度的分片策略配置
+     */
+    @PutMapping("/doc/{docId}/chunk-config")
+    public ResponseEntity<?> updateDocChunkConfig(@PathVariable Long docId, @RequestBody Map<String, Object> body) {
+        Long userId = requireAuth();
+        KbDocument doc = kbDocumentMapper.findById(docId);
+        if (doc == null) {
+            return ResponseEntity.badRequest().body(Map.of("code", 404, "msg", "文档不存在"));
+        }
+        kbAccessService.checkUploadPermission(userId, doc.getKbId());
+
+        String strategy = (String) body.get("strategy");
         Integer chunkSize = objToInt(body.get("chunkSize"));
         Integer chunkOverlap = objToInt(body.get("chunkOverlap"));
-        String embeddingModel = (String) body.get("embeddingModel");
-        kbConfigService.updateKbConfig(kbId, chunkStrategy, chunkSize, chunkOverlap, embeddingModel);
-        return ResponseEntity.ok(Map.of("code", 200, "msg", "配置更新成功"));
+        kbDocumentMapper.updateChunkConfig(docId, strategy, chunkSize, chunkOverlap);
+        log.info("文档分片策略已更新, docId={}, strategy={}, size={}, overlap={}",
+                docId, strategy, chunkSize, chunkOverlap);
+        return ResponseEntity.ok(Map.of("code", 200, "msg", "文档分片策略更新成功"));
     }
 
     // ==================== 知识库角色权限管理 ====================
@@ -285,6 +312,7 @@ public class AdminController {
 
     // ==================== 辅助方法 ====================
 
+    /** v2：构建知识库配置视图（不含 chunk 策略字段，chunk 策略已移至文档维度） */
     private Map<String, Object> buildConfigView(Long kbId) {
         KnowledgeBase kb = kbConfigService.getKb(kbId);
         EmbeddingConfig emb = kbConfigService.loadEmbeddingConfig(kbId);
@@ -293,9 +321,6 @@ public class AdminController {
         view.put("tenantId", kb.getTenantId());
         view.put("kbName", kb.getKbName());
         view.put("description", kb.getDescription());
-        view.put("chunkStrategy", kb.getChunkStrategy());
-        view.put("chunkSize", kb.getChunkSize());
-        view.put("chunkOverlap", kb.getChunkOverlap());
         view.put("embeddingModel", kb.getEmbeddingModel());
         view.put("collectionName", KbConfigService.deriveCollectionName(kb.getTenantId(), kb.getKbId()));
         view.put("vectorDim", emb.getVectorDim());

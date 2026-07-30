@@ -5,7 +5,7 @@
 
     <resultMap id="DocumentVersionResultMap" type="com.rag.core.entity.DocumentVersion">
         <id property="id" column="id"/>
-        <result property="documentId" column="document_id"/>
+        <result property="docId" column="doc_id"/>
         <result property="tenantId" column="tenant_id"/>
         <result property="kbId" column="kb_id"/>
         <result property="version" column="version"/>
@@ -19,63 +19,63 @@
     </resultMap>
 
     <select id="findByDocumentId" resultMap="DocumentVersionResultMap">
-        SELECT id, document_id, tenant_id, kb_id, version, chunk_count, operator_id,
+        SELECT id, doc_id, tenant_id, kb_id, version, chunk_count, operator_id,
                change_type, change_remark, collection_name, current_active, create_time
         FROM doc_version
-        WHERE document_id = #{documentId}
+        WHERE doc_id = #{docId}
         ORDER BY create_time DESC
     </select>
 
     <select id="findCurrentVersion" resultMap="DocumentVersionResultMap">
-        SELECT id, document_id, tenant_id, kb_id, version, chunk_count, operator_id,
+        SELECT id, doc_id, tenant_id, kb_id, version, chunk_count, operator_id,
                change_type, change_remark, collection_name, current_active, create_time
         FROM doc_version
-        WHERE document_id = #{documentId} AND current_active = 1
+        WHERE doc_id = #{docId} AND current_active = 1
         LIMIT 1
     </select>
 
     <select id="findByDocIdAndVersion" resultMap="DocumentVersionResultMap">
-        SELECT id, document_id, tenant_id, kb_id, version, chunk_count, operator_id,
+        SELECT id, doc_id, tenant_id, kb_id, version, chunk_count, operator_id,
                change_type, change_remark, collection_name, current_active, create_time
         FROM doc_version
-        WHERE document_id = #{documentId} AND version = #{version}
+        WHERE doc_id = #{docId} AND version = #{version}
     </select>
 
     <select id="findLatestVersion" resultMap="DocumentVersionResultMap">
-        SELECT id, document_id, tenant_id, kb_id, version, chunk_count, operator_id,
+        SELECT id, doc_id, tenant_id, kb_id, version, chunk_count, operator_id,
                change_type, change_remark, collection_name, current_active, create_time
         FROM doc_version
-        WHERE document_id = #{documentId}
+        WHERE doc_id = #{docId}
         ORDER BY id DESC
         LIMIT 1
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        INSERT INTO doc_version (document_id, tenant_id, kb_id, version, chunk_count, operator_id,
+        INSERT INTO doc_version (doc_id, tenant_id, kb_id, version, chunk_count, operator_id,
                                  change_type, change_remark, collection_name,
                                  current_active, create_time)
-        VALUES (#{documentId}, #{tenantId}, #{kbId}, #{version}, #{chunkCount}, #{operatorId},
+        VALUES (#{docId}, #{tenantId}, #{kbId}, #{version}, #{chunkCount}, #{operatorId},
                 #{changeType}, #{changeRemark}, #{collectionName},
                 #{currentActive}, #{createTime})
     </insert>
 
     <update id="deactivateAll">
         UPDATE doc_version SET current_active = 0
-        WHERE document_id = #{documentId}
+        WHERE doc_id = #{docId}
     </update>
 
     <update id="activeVersion">
         UPDATE doc_version SET current_active = 1
-        WHERE document_id = #{documentId} AND version = #{version}
+        WHERE doc_id = #{docId} AND version = #{version}
     </update>
 
     <delete id="deleteOlderThan">
         DELETE FROM doc_version
-        WHERE document_id = #{documentId}
+        WHERE doc_id = #{docId}
           AND id NOT IN (
               SELECT t.id FROM (
                   SELECT id FROM doc_version
-                  WHERE document_id = #{documentId}
+                  WHERE doc_id = #{docId}
                   ORDER BY create_time DESC
                   LIMIT #{keepCount}
               ) t

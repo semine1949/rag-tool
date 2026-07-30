@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import java.util.Date;
 
 /**
- * 文档版本实体（Multi-Tenant v2）
+ * 文档版本实体（v2 修复关联一致性：documentId(String) → docId(Long)）
  */
 @Data
 @Builder
@@ -17,8 +17,8 @@ import java.util.Date;
 public class DocumentVersion {
     /** 主键ID */
     private Long id;
-    /** 文档唯一标识 */
-    private String documentId;
+    /** 文档ID（关联 kb_document.doc_id，v2 改为 BIGINT） */
+    private Long docId;
     /** 所属租户ID */
     private Long tenantId;
     /** 所属知识库ID */

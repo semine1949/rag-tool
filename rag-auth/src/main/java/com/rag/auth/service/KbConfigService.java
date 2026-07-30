@@ -5,6 +5,7 @@ import com.rag.core.config.ChunkConfig;
 import com.rag.core.config.EmbeddingConfig;
 import com.rag.core.config.EmbeddingProperties;
 import com.rag.core.config.WeaviateCollectionConfig;
+import com.rag.core.entity.KbDocument;
 import com.rag.core.entity.KnowledgeBase;
 import com.rag.core.enums.ChunkStrategyEnum;
 import com.rag.core.enums.EmbeddingModelType;
@@ -18,10 +19,9 @@ import java.util.Date;
 import java.util.Set;
 
 /**
- * 知识库配置服务（Spring AI 重构版）
- * <p>负责知识库元信息、Embedding 配置、Weaviate 集合配置管理，以及集合的创建/清空/删除。</p>
- * <p>集合的物理创建交由 Spring AI {@code WeaviateVectorStore} 在首次 add 时懒创建；
- * 清空/删除通过 {@link VectorStoreRegistry} 操作底层 WeaviateClient。</p>
+ * 知识库配置服务（v2 重构）
+ * <p>分片策略已从知识库下移到文档维度，知识库仅保留 embedding_model。</p>
+ * <p>新增 buildChunkConfig(KbDocument) 从文档维度构建分片配置。</p>
  */
 @Service
 public class KbConfigService {
@@ -57,16 +57,18 @@ public class KbConfigService {
         this.embeddingProperties = embeddingProperties;
     }
 
+    /**
+     * 知识库加载结果（v2：ChunkConfig 改为从文档维度构建，此处仅包含 KB/Embedding/Collection 配置）
+     */
     public record KbLoadedConfig(
             KnowledgeBase kb,
-            ChunkConfig chunkConfig,
             EmbeddingConfig embeddingConfig,
             WeaviateCollectionConfig collectionConfig) {
     }
 
     public KbLoadedConfig loadConfigs(Long kbId) {
         KnowledgeBase kb = getKb(kbId);
-        return new KbLoadedConfig(kb, loadChunkConfig(), loadEmbeddingConfig(kbId), loadCollectionConfig(kbId));
+        return new KbLoadedConfig(kb, loadEmbeddingConfig(kbId), loadCollectionConfig(kbId));
     }
 
     public KnowledgeBase getKb(Long kbId) {
@@ -77,16 +79,14 @@ public class KbConfigService {
         return kb;
     }
 
+    // ===== v2：创建知识库仅需 embedding_model，chunk 策略由文档维度配置 =====
+
     public KnowledgeBase createKnowledgeBase(Long tenantId, String kbName, String description,
-                                             String chunkStrategy, Integer chunkSize,
-                                             Integer chunkOverlap, String embeddingModel) {
+                                             String embeddingModel) {
         KnowledgeBase kb = KnowledgeBase.builder()
                 .tenantId(tenantId)
                 .kbName(kbName)
                 .description(description)
-                .chunkStrategy(chunkStrategy)
-                .chunkSize(chunkSize)
-                .chunkOverlap(chunkOverlap)
                 .embeddingModel(embeddingModel)
                 .status(1)
                 .createTime(new Date())
@@ -97,10 +97,52 @@ public class KbConfigService {
         return kb;
     }
 
-    public void updateKbConfig(Long kbId, String chunkStrategy, Integer chunkSize,
-                               Integer chunkOverlap, String embeddingModel) {
-        kbMapper.updateConfig(kbId, chunkStrategy, chunkSize, chunkOverlap, embeddingModel);
-        log.info("更新知识库配置成功, kbId={}", kbId);
+    // ===== v2：更新知识库仅更新 embedding_model =====
+
+    public void updateKbEmbeddingModel(Long kbId, String embeddingModel) {
+        kbMapper.updateEmbeddingModel(kbId, embeddingModel);
+        log.info("更新知识库 Embedding 模型成功, kbId={}", kbId);
+    }
+
+    // ==================== v2 新增：从文档维度构建 ChunkConfig ====================
+
+    /**
+     * 从文档维度的分片策略配置构建 {@link ChunkConfig}。
+     * <p>优先使用文档自身配置，未指定时回退 application.yml 默认值。</p>
+     *
+     * @param doc 知识库文档（包含 chunkStrategy/chunkSize/chunkOverlap 字段）
+     * @return 合并后的分片配置
+     */
+    public ChunkConfig buildChunkConfig(KbDocument doc) {
+        ChunkStrategyEnum strategy = resolveChunkStrategy(doc.getChunkStrategy());
+        int chunkSize = (doc.getChunkSize() != null && doc.getChunkSize() > 0)
+                ? doc.getChunkSize() : defaultFixedSize;
+        int chunkOverlap = (doc.getChunkOverlap() != null)
+                ? doc.getChunkOverlap() : defaultSlideOverlap;
+
+        return ChunkConfig.builder()
+                .enableStrategies(Set.of(strategy))
+                .fixedChunkSize(chunkSize)
+                .slideOverlap(chunkOverlap)
+                .semanticThreshold(defaultSemanticThreshold)
+                .splitTableSingleChunk(defaultSplitTable)
+                .splitCodeByFunction(defaultSplitCode)
+                .maxTitleLevel(defaultMaxTitleLevel)
+                .parentChunkLen(defaultParentChunkLen)
+                .childChunkLen(defaultChildChunkLen)
+                .build();
+    }
+
+    private ChunkStrategyEnum resolveChunkStrategy(String strategy) {
+        if (strategy == null || strategy.isBlank()) {
+            return ChunkStrategyEnum.FIXED_SIZE;
+        }
+        try {
+            return ChunkStrategyEnum.valueOf(strategy.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("未知分片策略 '{}'，回退默认 FIXED_SIZE", strategy);
+            return ChunkStrategyEnum.FIXED_SIZE;
+        }
     }
 
     // ==================== 集合管理（Spring AI） ====================
@@ -133,22 +175,6 @@ public class KbConfigService {
     }
 
     // ==================== 配置解析 ====================
-
-    public ChunkConfig loadChunkConfig() {
-        return ChunkConfig.builder()
-                .enableStrategies(Set.of(
-                        ChunkStrategyEnum.FIXED_SIZE,
-                        ChunkStrategyEnum.SEMANTIC))
-                .fixedChunkSize(defaultFixedSize)
-                .slideOverlap(defaultSlideOverlap)
-                .semanticThreshold(defaultSemanticThreshold)
-                .splitTableSingleChunk(defaultSplitTable)
-                .splitCodeByFunction(defaultSplitCode)
-                .maxTitleLevel(defaultMaxTitleLevel)
-                .parentChunkLen(defaultParentChunkLen)
-                .childChunkLen(defaultChildChunkLen)
-                .build();
-    }
 
     public EmbeddingConfig loadEmbeddingConfig(Long kbId) {
         KnowledgeBase kb = getKb(kbId);

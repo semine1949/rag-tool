@@ -7,20 +7,27 @@ import org.apache.ibatis.annotations.Param;
 import java.util.List;
 
 /**
- * 知识库文档登记表 MyBatis Mapper
+ * 知识库文档登记表 MyBatis Mapper（v2 重构）
  */
 @Mapper
 public interface KbDocumentMapper {
 
     KbDocument findById(@Param("docId") Long docId);
 
-    KbDocument findByFileId(@Param("fileId") String fileId);
-
     List<KbDocument> findByKbId(@Param("kbId") Long kbId);
 
     int insert(KbDocument doc);
 
-    int deleteByFileId(@Param("fileId") String fileId);
+    int deleteByDocId(@Param("docId") Long docId);
 
-    int updateChunkCount(@Param("fileId") String fileId, @Param("chunkCount") Integer chunkCount);
+    int updateChunkCount(@Param("docId") Long docId, @Param("chunkCount") Integer chunkCount);
+
+    /** v2 新增：更新处理状态 */
+    int updateProcessStatus(@Param("docId") Long docId, @Param("processStatus") String processStatus);
+
+    /** v2 新增：更新文档维度的分片策略配置 */
+    int updateChunkConfig(@Param("docId") Long docId,
+                          @Param("chunkStrategy") String chunkStrategy,
+                          @Param("chunkSize") Integer chunkSize,
+                          @Param("chunkOverlap") Integer chunkOverlap);
 }

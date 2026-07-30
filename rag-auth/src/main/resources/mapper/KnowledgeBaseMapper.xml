@@ -8,41 +8,33 @@
         <result property="tenantId" column="tenant_id"/>
         <result property="kbName" column="kb_name"/>
         <result property="description" column="description"/>
-        <result property="chunkStrategy" column="chunk_strategy"/>
-        <result property="chunkSize" column="chunk_size"/>
-        <result property="chunkOverlap" column="chunk_overlap"/>
         <result property="embeddingModel" column="embedding_model"/>
         <result property="status" column="status"/>
         <result property="createTime" column="create_time"/>
     </resultMap>
 
     <select id="findById" resultMap="KnowledgeBaseResultMap">
-        SELECT kb_id, tenant_id, kb_name, description, chunk_strategy, chunk_size,
-               chunk_overlap, embedding_model, status, create_time
+        SELECT kb_id, tenant_id, kb_name, description, embedding_model, status, create_time
         FROM kb_knowledge_base WHERE kb_id = #{kbId}
     </select>
 
     <select id="findByTenantId" resultMap="KnowledgeBaseResultMap">
-        SELECT kb_id, tenant_id, kb_name, description, chunk_strategy, chunk_size,
-               chunk_overlap, embedding_model, status, create_time
+        SELECT kb_id, tenant_id, kb_name, description, embedding_model, status, create_time
         FROM kb_knowledge_base WHERE tenant_id = #{tenantId}
         ORDER BY create_time DESC
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="kbId" keyColumn="kb_id">
-        INSERT INTO kb_knowledge_base (tenant_id, kb_name, description, chunk_strategy,
-                                       chunk_size, chunk_overlap, embedding_model, status, create_time)
-        VALUES (#{tenantId}, #{kbName}, #{description}, #{chunkStrategy},
-                #{chunkSize}, #{chunkOverlap}, #{embeddingModel}, #{status}, #{createTime})
+        INSERT INTO kb_knowledge_base (tenant_id, kb_name, description,
+                                       embedding_model, status, create_time)
+        VALUES (#{tenantId}, #{kbName}, #{description},
+                #{embeddingModel}, #{status}, #{createTime})
     </insert>
 
     <update id="update">
         UPDATE kb_knowledge_base
         SET kb_name = #{kbName},
             description = #{description},
-            chunk_strategy = #{chunkStrategy},
-            chunk_size = #{chunkSize},
-            chunk_overlap = #{chunkOverlap},
             embedding_model = #{embeddingModel},
             status = #{status}
         WHERE kb_id = #{kbId}
@@ -52,13 +44,9 @@
         UPDATE kb_knowledge_base SET status = #{status} WHERE kb_id = #{kbId}
     </update>
 
-    <update id="updateConfig">
-        UPDATE kb_knowledge_base
-        SET chunk_strategy = #{chunkStrategy},
-            chunk_size = #{chunkSize},
-            chunk_overlap = #{chunkOverlap},
-            embedding_model = #{embeddingModel}
-        WHERE kb_id = #{kbId}
+    <!-- v2：仅更新 embedding_model -->
+    <update id="updateEmbeddingModel">
+        UPDATE kb_knowledge_base SET embedding_model = #{embeddingModel} WHERE kb_id = #{kbId}
     </update>
 
 </mapper>

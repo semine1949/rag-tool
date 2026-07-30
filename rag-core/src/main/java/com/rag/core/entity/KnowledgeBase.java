@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import java.util.Date;
 
 /**
- * 知识库实体（扁平配置列，不存 JSON）
+ * 知识库实体（v2：分片策略已下沉至文档维度，知识库仅保留 embedding_model）
  */
 @Data
 @Builder
@@ -19,13 +19,7 @@ public class KnowledgeBase {
     private Long tenantId;
     private String kbName;
     private String description;
-    /** 分片策略：FIXED_SIZE/SEMANTIC/TABLE/CODE_FUNCTION/TITLE_HIERARCHY/PARENT_CHILD */
-    private String chunkStrategy;
-    /** 分片大小（字符数） */
-    private Integer chunkSize;
-    /** 分片重叠窗口（字符数） */
-    private Integer chunkOverlap;
-    /** Embedding模型名（如 text-embedding-3-small / Qwen/Qwen3-Embedding-0.6B） */
+    /** Embedding模型名（如 text-embedding-3-small），同一知识库内统一 */
     private String embeddingModel;
     private Integer status;
     private Date createTime;

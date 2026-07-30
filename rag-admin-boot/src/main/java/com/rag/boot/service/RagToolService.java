@@ -1,6 +1,7 @@
 package com.rag.boot.service;
 
 import com.rag.auth.context.RequestContext;
+import com.rag.auth.mapper.DocChunkMapper;
 import com.rag.auth.mapper.KbDocumentMapper;
 import com.rag.auth.service.KbConfigService;
 import com.rag.chunker.ChunkerFactory;
@@ -8,8 +9,10 @@ import com.rag.core.api.DocumentVersionService;
 import com.rag.core.config.ChunkConfig;
 import com.rag.core.config.EmbeddingConfig;
 import com.rag.core.config.WeaviateCollectionConfig;
-import com.rag.core.entity.KbDocument;
+import com.rag.core.entity.DocChunk;
 import com.rag.core.entity.DocumentVersion;
+import com.rag.core.entity.KbDocument;
+import com.rag.core.enums.ProcessStatusEnum;
 import com.rag.core.exception.RagException;
 import com.rag.core.factory.EmbeddingModelFactory;
 import com.rag.core.factory.VectorStoreRegistry;
@@ -34,10 +37,16 @@ import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 /**
- * RAG 核心流水线服务（Spring AI 重构版）
+ * RAG 核心流水线服务（v2 重构版）
  * <p>
- * 解析 → 分片 → 元数据富化 → 入库（VectorStore.add 内部完成向量化）→ 检索。
- * 全程以 {@link Document} 为统一载体，向量化由 {@link VectorStore} 绑定的 {@link EmbeddingModel} 完成。
+ * 核心变更：
+ *   1. 分片策略从知识库维度下移到文档维度（ChunkConfig 从 KbDocument 构建）
+ *   2. 新增全流程处理状态机（PENDING→...→COMPLETED/FAILED）
+ *   3. 分片原文持久化到 doc_chunk 表
+ *   4. 版本表关联使用 doc_id(Long) 替代 documentId(String)
+ * <p>
+ * 流程：解析 → 插入文档记录(PENDING) → 文档维度构建ChunkConfig → 分块 →
+ *        版本记录 → 向量化入库 → doc_chunk持久化 → COMPLETED
  */
 @Service
 public class RagToolService {
@@ -51,6 +60,7 @@ public class RagToolService {
     private final DocumentVersionService versionService;
     private final KbConfigService kbConfigService;
     private final KbDocumentMapper kbDocumentMapper;
+    private final DocChunkMapper docChunkMapper;
     private final Executor ragTaskExecutor;
 
     public RagToolService(DocumentParseFactory parseFactory,
@@ -60,6 +70,7 @@ public class RagToolService {
                           DocumentVersionService versionService,
                           KbConfigService kbConfigService,
                           KbDocumentMapper kbDocumentMapper,
+                          DocChunkMapper docChunkMapper,
                           Executor ragTaskExecutor) {
         this.parseFactory = parseFactory;
         this.chunkerFactory = chunkerFactory;
@@ -68,13 +79,15 @@ public class RagToolService {
         this.versionService = versionService;
         this.kbConfigService = kbConfigService;
         this.kbDocumentMapper = kbDocumentMapper;
+        this.docChunkMapper = docChunkMapper;
         this.ragTaskExecutor = ragTaskExecutor;
     }
 
-    // ==================== 单文件处理 ====================
+    // ==================== 单文件处理（v2 重构） ====================
 
     /**
-     * 处理单个上传文件：解析 → 分片 → 向量化入库。
+     * 处理单个上传文件：解析 → 插入文档(PENDING) → 构建文档级ChunkConfig → 分块 →
+     * 版本记录 → 向量化入库 → doc_chunk持久化 → COMPLETED。
      */
     public FileProcessResult processFile(MultipartFile file, Long kbId, String changeType) {
         if (file == null || file.isEmpty()) {
@@ -82,9 +95,11 @@ public class RagToolService {
         }
         KbConfigService.KbLoadedConfig loaded = kbConfigService.loadConfigs(kbId);
         Long tenantId = loaded.kb().getTenantId();
+        Long userId = RequestContext.currentUserId();
 
         String originalFilename = file.getOriginalFilename();
         Path tempPath = null;
+        Long docId = null;
         try {
             tempPath = Files.createTempFile("rag-upload-", "-" + originalFilename);
             file.transferTo(tempPath.toFile());
@@ -94,89 +109,171 @@ public class RagToolService {
             log.info("开始处理文件: {}, 类型: {}, 知识库: {}, 租户: {}",
                     originalFilename, contentType, kbId, tenantId);
 
+            // ===== 1. 解析文件 =====
             List<Document> docs = parseFactory.parse(tempFile);
             String fullText = docs.get(0).getText();
             if (fullText == null || fullText.isBlank()) {
                 throw new RagException("RAG_EMPTY_TEXT", "解析后文本为空: " + originalFilename);
             }
 
-            ChunkConfig chunkConfig = loaded.chunkConfig();
-            List<Document> chunks = chunkerFactory.chunk(docs, chunkConfig);
-
-            String documentId = (String) docs.get(0).getMetadata().get("fileId");
+            // 提取元数据（fileId 为 UUID，用于 Weaviate 过滤删除）
+            String fileId = (String) docs.get(0).getMetadata().get("fileId");
             String fileName = (String) docs.get(0).getMetadata().get("fileName");
 
-            // 版本计算
-            DocumentVersion currentVersion = versionService.getCurrentVersion(documentId);
-            String effectiveChangeType = (changeType != null && !changeType.isBlank())
-                    ? changeType.toUpperCase() : (currentVersion == null ? "INITIAL" : "MINOR");
-            String newVersion = versionService.generateNextVersion(documentId, effectiveChangeType);
-            Long userId = RequestContext.currentUserId();
+            // ===== 2. 插入文档记录（PENDING 状态，获取 doc_id） =====
+            KbDocument kbDoc = KbDocument.builder()
+                    .kbId(kbId)
+                    .tenantId(tenantId)
+                    .fileName(fileName != null ? fileName : originalFilename)
+                    .fileType(contentType)
+                    .fileSize(file.getSize())
+                    .chunkStrategy(null)     // 文档级策略，后续可通过 API 单独配置；未设置则走默认
+                    .chunkSize(null)
+                    .chunkOverlap(null)
+                    .processStatus(ProcessStatusEnum.PARSED.name())
+                    .chunkCount(0)
+                    .ownerId(userId)
+                    .collectionName(loaded.collectionConfig().getClassName())
+                    .uploadTime(new Date())
+                    .createTime(new Date())
+                    .build();
+            kbDocumentMapper.insert(kbDoc);
+            docId = kbDoc.getDocId();
+            log.info("文档记录已创建, docId={}, fileId={}, fileName={}", docId, fileId, kbDoc.getFileName());
 
-            // 富化每个切片元数据
-            for (Document chunk : chunks) {
-                chunk.getMetadata().put("fileId", documentId);
-                chunk.getMetadata().put("documentVersion", newVersion);
-                chunk.getMetadata().put("ownerId", userId);
-                chunk.getMetadata().put("tenantId", tenantId);
-                chunk.getMetadata().put("kbId", kbId);
+            // 删除旧记录（同一文件重复上传时清理）
+            if (fileId != null) {
+                // 按 Weaviate 中旧 fileId 清理向量
+                try {
+                    EmbeddingConfig embConfig = loaded.embeddingConfig();
+                    WeaviateCollectionConfig colConfig = loaded.collectionConfig();
+                    VectorStore store = vectorStoreRegistry.getWeaviateStore(
+                            colConfig.getClassName(), embeddingModelFactory.getModel(embConfig),
+                            colConfig.getVectorDim());
+                    store.delete(new Filter.Expression(Filter.ExpressionType.EQ,
+                            new Filter.Key("fileId"), new Filter.Value(fileId)));
+                } catch (Exception e) {
+                    log.warn("删除旧向量数据失败（可忽略）: {}", e.getMessage());
+                }
             }
 
-            // 1. 版本记录
-            versionService.createVersion(DocumentVersion.builder()
-                    .documentId(documentId)
+            // ===== 3. 从文档维度构建 ChunkConfig =====
+            ChunkConfig chunkConfig = kbConfigService.buildChunkConfig(kbDoc);
+            log.info("文档级分片策略: {}, size={}, overlap={}",
+                    kbDoc.getChunkStrategy() != null ? kbDoc.getChunkStrategy() : "FIXED_SIZE(默认)",
+                    chunkConfig.getFixedChunkSize(), chunkConfig.getSlideOverlap());
+
+            // ===== 4. 推进状态 → CHUNKING =====
+            updateStatus(docId, ProcessStatusEnum.CHUNKING);
+
+            // ===== 5. 分块 =====
+            List<Document> chunks = chunkerFactory.chunk(docs, chunkConfig);
+            int chunkCount = chunks.size();
+            log.info("分块完成, docId={}, 分片数={}", docId, chunkCount);
+
+            // ===== 6. 推进状态 → CHUNKED =====
+            updateStatus(docId, ProcessStatusEnum.CHUNKED);
+
+            // ===== 7. 计算版本 =====
+            DocumentVersion currentVersion = versionService.getCurrentVersion(docId);
+            String effectiveChangeType = (changeType != null && !changeType.isBlank())
+                    ? changeType.toUpperCase() : (currentVersion == null ? "INITIAL" : "MINOR");
+            String newVersion = versionService.generateNextVersion(docId, effectiveChangeType);
+
+            // 创建版本记录
+            DocumentVersion version = DocumentVersion.builder()
+                    .docId(docId)
                     .tenantId(tenantId)
                     .kbId(kbId)
                     .version(newVersion)
-                    .chunkCount(chunks.size())
+                    .chunkCount(chunkCount)
                     .operatorId(userId)
                     .changeType(effectiveChangeType)
                     .collectionName(loaded.collectionConfig().getClassName())
                     .currentActive(true)
-                    .build());
+                    .build();
+            versionService.createVersion(version);
+            log.info("版本创建: docId={}, ver={}, chunks={}", docId, newVersion, chunkCount);
 
-            // 2. 知识库文档记录
-            kbDocumentMapper.deleteByFileId(documentId);
-            kbDocumentMapper.insert(KbDocument.builder()
-                    .kbId(kbId)
-                    .tenantId(tenantId)
-                    .fileName(fileName)
-                    .fileType(contentType)
-                    .chunkCount(chunks.size())
-                    .version(newVersion)
-                    .ownerId(userId)
-                    .collectionName(loaded.collectionConfig().getClassName())
-                    .build());
+            // 获取版本记录ID（用于 doc_chunk 关联）
+            DocumentVersion savedVersion = versionService.getCurrentVersion(docId);
+            Long versionId = savedVersion != null ? savedVersion.getId() : null;
 
-            // 3. 入库（VectorStore.add 内部完成向量化）
+            // ===== 8. 富化每个分片元数据 =====
+            for (int i = 0; i < chunks.size(); i++) {
+                Document chunk = chunks.get(i);
+                chunk.getMetadata().put("fileId", fileId);
+                chunk.getMetadata().put("docId", docId);
+                chunk.getMetadata().put("documentVersion", newVersion);
+                chunk.getMetadata().put("ownerId", userId);
+                chunk.getMetadata().put("tenantId", tenantId);
+                chunk.getMetadata().put("kbId", kbId);
+                chunk.getMetadata().put("chunkIndex", i);
+            }
+
+            // ===== 9. 推进状态 → VECTORIZING =====
+            updateStatus(docId, ProcessStatusEnum.VECTORIZING);
+
+            // ===== 10. 向量化入库（VectorStore.add 内部完成向量化） =====
             EmbeddingConfig embeddingConfig = loaded.embeddingConfig();
             WeaviateCollectionConfig collectionConfig = loaded.collectionConfig();
             VectorStore store = vectorStoreRegistry.getWeaviateStore(
                     collectionConfig.getClassName(), embeddingModelFactory.getModel(embeddingConfig),
                     collectionConfig.getVectorDim());
 
-            // 删除旧切片（按 fileId），集合不存在时忽略
-            if (documentId != null) {
-                try {
-                    store.delete(new Filter.Expression(Filter.ExpressionType.EQ,
-                            new Filter.Key("fileId"), new Filter.Value(documentId)));
-                } catch (Exception e) {
-                    log.warn("删除旧切片失败（可忽略，可能集合尚未创建）: {}", e.getMessage());
-                }
-            }
             store.add(chunks);
+            log.info("向量化入库完成, docId={}, chunks={}", docId, chunkCount);
 
-            log.info("文件入库完成: {}, 切片数: {}", fileName, chunks.size());
+            // ===== 11. 分片原文持久化到 doc_chunk 表 =====
+            List<DocChunk> docChunks = new ArrayList<>();
+            for (int i = 0; i < chunks.size(); i++) {
+                Document chunk = chunks.get(i);
+                DocChunk dc = DocChunk.builder()
+                        .docId(docId)
+                        .tenantId(tenantId)
+                        .kbId(kbId)
+                        .versionId(versionId)
+                        .chunkIndex(i)
+                        .chunkType("flat")  // 默认扁平分片，PARENT_CHILD 策略时由 Chunker 覆写元数据
+                        .parentChunkId(null)
+                        .content(chunk.getText())
+                        .vectorId((String) chunk.getMetadata().get("id")) // Weaviate 返回的 object ID
+                        .createTime(new Date())
+                        .build();
+                docChunks.add(dc);
+            }
+            if (!docChunks.isEmpty()) {
+                docChunkMapper.batchInsert(docChunks);
+                log.info("分片原文已持久化到 doc_chunk 表, docId={}, count={}", docId, docChunks.size());
+            }
+
+            // ===== 12. 推进状态 → COMPLETED，更新分片数与版本 =====
+            kbDocumentMapper.updateChunkCount(docId, chunkCount);
+            updateStatus(docId, ProcessStatusEnum.COMPLETED);
+
+            // 同步更新 kb_document 的 version 字段
+            kbDoc.setVersion(newVersion);
+            kbDoc.setChunkCount(chunkCount);
+            kbDoc.setProcessStatus(ProcessStatusEnum.COMPLETED.name());
+
+            log.info("文件处理完成: docId={}, fileName={}, 切片数={}", docId, fileName, chunkCount);
             return FileProcessResult.builder()
-                    .fileId(documentId)
+                    .fileId(String.valueOf(docId))
                     .fileName(fileName)
-                    .chunkCount(chunks.size())
-                    .insertedCount(chunks.size())
+                    .chunkCount(chunkCount)
+                    .insertedCount(chunkCount)
                     .success(true)
                     .build();
 
         } catch (IOException e) {
+            markFailed(docId, e);
             throw new RagException("RAG_IO", "文件处理IO异常: " + e.getMessage(), e);
+        } catch (RagException e) {
+            markFailed(docId, e);
+            throw e;
+        } catch (Exception e) {
+            markFailed(docId, e);
+            throw new RagException("RAG_SYS", "文件处理异常: " + e.getMessage(), e);
         } finally {
             if (tempPath != null) {
                 try {
@@ -253,7 +350,7 @@ public class RagToolService {
         log.info("检索完成，命中 {} 条", documents.size());
 
         return documents.stream().map(d -> FileProcessResult.builder()
-                .fileId((String) d.getMetadata().get("fileId"))
+                .fileId(String.valueOf(d.getMetadata().get("docId")))
                 .fileName((String) d.getMetadata().get("fileName"))
                 .snippet(d.getText())
                 .score(d.getScore())
@@ -265,6 +362,32 @@ public class RagToolService {
 
     public List<KbDocument> listDocuments(Long kbId) {
         return kbDocumentMapper.findByKbId(kbId);
+    }
+
+    // ==================== 状态机辅助方法 ====================
+
+    private void updateStatus(Long docId, ProcessStatusEnum status) {
+        if (docId == null) {
+            return;
+        }
+        try {
+            kbDocumentMapper.updateProcessStatus(docId, status.name());
+            log.debug("文档状态推进: docId={}, status={}", docId, status);
+        } catch (Exception e) {
+            log.warn("更新文档状态失败: docId={}, status={}, error={}", docId, status, e.getMessage());
+        }
+    }
+
+    private void markFailed(Long docId, Exception e) {
+        if (docId == null) {
+            return;
+        }
+        try {
+            kbDocumentMapper.updateProcessStatus(docId, ProcessStatusEnum.FAILED.name());
+            log.error("文档处理失败, docId={}, error={}", docId, e.getMessage());
+        } catch (Exception ex) {
+            log.warn("标记失败状态异常: docId={}, error={}", docId, ex.getMessage());
+        }
     }
 
     // ==================== 工具方法 ====================

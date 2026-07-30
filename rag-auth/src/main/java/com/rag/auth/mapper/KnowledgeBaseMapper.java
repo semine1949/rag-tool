@@ -7,7 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import java.util.List;
 
 /**
- * 知识库表 MyBatis Mapper（扁平配置列）
+ * 知识库表 MyBatis Mapper（v2：移除 chunk 策略列，保留 embedding_model）
  */
 @Mapper
 public interface KnowledgeBaseMapper {
@@ -22,9 +22,6 @@ public interface KnowledgeBaseMapper {
 
     int updateStatus(@Param("kbId") Long kbId, @Param("status") Integer status);
 
-    int updateConfig(@Param("kbId") Long kbId,
-                     @Param("chunkStrategy") String chunkStrategy,
-                     @Param("chunkSize") Integer chunkSize,
-                     @Param("chunkOverlap") Integer chunkOverlap,
-                     @Param("embeddingModel") String embeddingModel);
+    /** v2：仅更新 embedding_model，chunk 策略已下沉至文档维度 */
+    int updateEmbeddingModel(@Param("kbId") Long kbId, @Param("embeddingModel") String embeddingModel);
 }

@@ -7,27 +7,27 @@ import org.apache.ibatis.annotations.Param;
 import java.util.List;
 
 /**
- * 文档版本表 MyBatis Mapper
+ * 文档版本表 MyBatis Mapper（v2：documentId(String)→docId(Long)，列名 document_id→doc_id）
  */
 @Mapper
 public interface DocumentVersionMapper {
 
-    List<DocumentVersion> findByDocumentId(@Param("documentId") String documentId);
+    List<DocumentVersion> findByDocumentId(@Param("docId") Long docId);
 
-    DocumentVersion findCurrentVersion(@Param("documentId") String documentId);
+    DocumentVersion findCurrentVersion(@Param("docId") Long docId);
 
-    DocumentVersion findByDocIdAndVersion(@Param("documentId") String documentId,
+    DocumentVersion findByDocIdAndVersion(@Param("docId") Long docId,
                                           @Param("version") String version);
 
-    DocumentVersion findLatestVersion(@Param("documentId") String documentId);
+    DocumentVersion findLatestVersion(@Param("docId") Long docId);
 
     int insert(DocumentVersion version);
 
-    int deactivateAll(@Param("documentId") String documentId);
+    int deactivateAll(@Param("docId") Long docId);
 
-    int activeVersion(@Param("documentId") String documentId,
+    int activeVersion(@Param("docId") Long docId,
                       @Param("version") String version);
 
-    int deleteOlderThan(@Param("documentId") String documentId,
+    int deleteOlderThan(@Param("docId") Long docId,
                         @Param("keepCount") int keepCount);
 }
