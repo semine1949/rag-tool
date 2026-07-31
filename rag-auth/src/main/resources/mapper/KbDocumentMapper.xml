@@ -65,13 +65,4 @@
         UPDATE kb_document SET process_status = #{processStatus} WHERE doc_id = #{docId}
     </update>
 
-    <!-- v2 新增：更新文档维度的分片策略配置 -->
-    <update id="updateChunkConfig">
-        UPDATE kb_document
-        SET chunk_strategy = #{chunkStrategy},
-            chunk_size = #{chunkSize},
-            chunk_overlap = #{chunkOverlap}
-        WHERE doc_id = #{docId}
-    </update>
-
 </mapper>

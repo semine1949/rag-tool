@@ -32,7 +32,6 @@ public class AdminController {
     private final RoleMapper roleMapper;
     private final UserTenantRoleMapper userTenantRoleMapper;
     private final KbRolePermissionMapper kbRolePermissionMapper;
-    private final KbDocumentMapper kbDocumentMapper;
     private final KbAccessService kbAccessService;
     private final KbConfigService kbConfigService;
     private final AuthServiceImpl authService;
@@ -43,7 +42,6 @@ public class AdminController {
                            RoleMapper roleMapper,
                            UserTenantRoleMapper userTenantRoleMapper,
                            KbRolePermissionMapper kbRolePermissionMapper,
-                           KbDocumentMapper kbDocumentMapper,
                            KbAccessService kbAccessService,
                            KbConfigService kbConfigService,
                            AuthServiceImpl authService) {
@@ -53,7 +51,6 @@ public class AdminController {
         this.roleMapper = roleMapper;
         this.userTenantRoleMapper = userTenantRoleMapper;
         this.kbRolePermissionMapper = kbRolePermissionMapper;
-        this.kbDocumentMapper = kbDocumentMapper;
         this.kbAccessService = kbAccessService;
         this.kbConfigService = kbConfigService;
         this.authService = authService;
@@ -209,29 +206,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("code", 200, "msg", "配置更新成功"));
     }
 
-    // ==================== v2 新增：文档维度分片策略配置 ====================
-
-    /**
-     * 更新文档维度的分片策略配置
-     */
-    @PutMapping("/doc/{docId}/chunk-config")
-    public ResponseEntity<?> updateDocChunkConfig(@PathVariable Long docId, @RequestBody Map<String, Object> body) {
-        Long userId = requireAuth();
-        KbDocument doc = kbDocumentMapper.findById(docId);
-        if (doc == null) {
-            return ResponseEntity.badRequest().body(Map.of("code", 404, "msg", "文档不存在"));
-        }
-        kbAccessService.checkUploadPermission(userId, doc.getKbId());
-
-        String strategy = (String) body.get("strategy");
-        Integer chunkSize = objToInt(body.get("chunkSize"));
-        Integer chunkOverlap = objToInt(body.get("chunkOverlap"));
-        kbDocumentMapper.updateChunkConfig(docId, strategy, chunkSize, chunkOverlap);
-        log.info("文档分片策略已更新, docId={}, strategy={}, size={}, overlap={}",
-                docId, strategy, chunkSize, chunkOverlap);
-        return ResponseEntity.ok(Map.of("code", 200, "msg", "文档分片策略更新成功"));
-    }
-
     // ==================== 知识库角色权限管理 ====================
 
     @GetMapping("/kb/{kbId}/permissions")
@@ -365,9 +339,4 @@ public class AdminController {
         return null;
     }
 
-    private Integer objToInt(Object val) {
-        if (val instanceof Number num) return num.intValue();
-        if (val instanceof String str && !str.isBlank()) return Integer.parseInt(str);
-        return null;
-    }
 }

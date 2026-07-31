@@ -24,10 +24,4 @@ public interface KbDocumentMapper {
 
     /** v2 新增：更新处理状态 */
     int updateProcessStatus(@Param("docId") Long docId, @Param("processStatus") String processStatus);
-
-    /** v2 新增：更新文档维度的分片策略配置 */
-    int updateChunkConfig(@Param("docId") Long docId,
-                          @Param("chunkStrategy") String chunkStrategy,
-                          @Param("chunkSize") Integer chunkSize,
-                          @Param("chunkOverlap") Integer chunkOverlap);
 }

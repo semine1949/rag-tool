@@ -35,16 +35,19 @@ public class RagController {
     // ==================== 文件上传 ====================
 
     /**
-     * 单文件上传入库（仅需 file + kbId）
+     * 单文件上传入库（file + kbId，可选文档级分片策略，未指定默认 FIXED_SIZE）
      */
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadFile(
             @RequestPart("file") MultipartFile file,
-            @RequestParam("kbId") Long kbId) {
+            @RequestParam("kbId") Long kbId,
+            @RequestParam(value = "chunkStrategy", required = false) String chunkStrategy,
+            @RequestParam(value = "chunkSize", required = false) Integer chunkSize,
+            @RequestParam(value = "chunkOverlap", required = false) Integer chunkOverlap) {
         try {
             Long userId = requireAuth();
             kbAccessService.checkUploadPermission(userId, kbId);
-            FileProcessResult result = ragToolService.processFile(file, kbId, null);
+            FileProcessResult result = ragToolService.processFile(file, kbId, null, chunkStrategy, chunkSize, chunkOverlap);
             return ResponseEntity.ok(Map.of("code", 200, "data", result));
         } catch (Exception e) {
             log.error("文件上传处理失败", e);
@@ -66,8 +69,12 @@ public class RagController {
                 return ResponseEntity.badRequest().body(Map.of("code", 400, "msg", "缺少 kbId"));
             }
             kbAccessService.checkUploadPermission(userId, kbId);
+            // 透传文档级分片策略（request 可空，未指定则默认 FIXED_SIZE）
+            String chunkStrategy = request != null ? request.getChunkStrategy() : null;
+            Integer chunkSize = request != null ? request.getChunkSize() : null;
+            Integer chunkOverlap = request != null ? request.getChunkOverlap() : null;
             CompletableFuture<List<FileProcessResult>> future =
-                    ragToolService.batchProcessFiles(files, kbId);
+                    ragToolService.batchProcessFiles(files, kbId, chunkStrategy, chunkSize, chunkOverlap);
             return ResponseEntity.ok(Map.of("code", 200, "msg", "批量任务已提交"));
         } catch (Exception e) {
             log.error("批量上传处理失败", e);

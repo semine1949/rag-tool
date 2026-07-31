@@ -89,7 +89,8 @@ public class RagToolService {
      * 处理单个上传文件：解析 → 插入文档(PENDING) → 构建文档级ChunkConfig → 分块 →
      * 版本记录 → 向量化入库 → doc_chunk持久化 → COMPLETED。
      */
-    public FileProcessResult processFile(MultipartFile file, Long kbId, String changeType) {
+    public FileProcessResult processFile(MultipartFile file, Long kbId, String changeType,
+                                          String chunkStrategy, Integer chunkSize, Integer chunkOverlap) {
         if (file == null || file.isEmpty()) {
             throw new RagException("RAG_FILE_EMPTY", "上传文件为空");
         }
@@ -127,9 +128,9 @@ public class RagToolService {
                     .fileName(fileName != null ? fileName : originalFilename)
                     .fileType(contentType)
                     .fileSize(file.getSize())
-                    .chunkStrategy(null)     // 文档级策略，后续可通过 API 单独配置；未设置则走默认
-                    .chunkSize(null)
-                    .chunkOverlap(null)
+                    .chunkStrategy(chunkStrategy)   // 文档级策略，由上传接口传入；未设置则 buildChunkConfig 回退 FIXED_SIZE
+                    .chunkSize(chunkSize)
+                    .chunkOverlap(chunkOverlap)
                     .processStatus(ProcessStatusEnum.PARSED.name())
                     .chunkCount(0)
                     .ownerId(userId)
@@ -286,12 +287,13 @@ public class RagToolService {
 
     // ==================== 批量处理 ====================
 
-    public CompletableFuture<List<FileProcessResult>> batchProcessFiles(List<MultipartFile> files, Long kbId) {
+    public CompletableFuture<List<FileProcessResult>> batchProcessFiles(List<MultipartFile> files, Long kbId,
+                                                                          String chunkStrategy, Integer chunkSize, Integer chunkOverlap) {
         return CompletableFuture.supplyAsync(() -> {
             List<FileProcessResult> results = new ArrayList<>();
             for (MultipartFile file : files) {
                 try {
-                    results.add(processFile(file, kbId, null));
+                    results.add(processFile(file, kbId, null, chunkStrategy, chunkSize, chunkOverlap));
                 } catch (Exception e) {
                     log.error("批量处理文件失败: {}", e.getMessage());
                     results.add(FileProcessResult.builder().success(false)
@@ -318,7 +320,7 @@ public class RagToolService {
             if (f.isFile()) {
                 try {
                     MultipartFile mp = new InMemoryMultipartFile(f.getName(), Files.readAllBytes(f.toPath()), "application/octet-stream");
-                    results.add(processFile(mp, kbId, null));
+                    results.add(processFile(mp, kbId, null, null, null, null));
                 } catch (IOException e) {
                     results.add(FileProcessResult.builder().success(false).message(e.getMessage()).build());
                 }
