@@ -5,6 +5,8 @@ import com.rag.auth.mapper.DocChunkMapper;
 import com.rag.auth.mapper.KbDocumentMapper;
 import com.rag.auth.service.KbConfigService;
 import com.rag.chunker.ChunkerFactory;
+import com.rag.chunker.ParentChildTextSplitter;
+import com.rag.chunker.SizeTextSplitter;
 import com.rag.core.api.DocumentVersionService;
 import com.rag.core.config.ChunkConfig;
 import com.rag.core.config.EmbeddingConfig;
@@ -12,10 +14,13 @@ import com.rag.core.config.WeaviateCollectionConfig;
 import com.rag.core.entity.DocChunk;
 import com.rag.core.entity.DocumentVersion;
 import com.rag.core.entity.KbDocument;
+import com.rag.core.enums.ChunkStrategyEnum;
 import com.rag.core.enums.ProcessStatusEnum;
 import com.rag.core.exception.RagException;
 import com.rag.core.factory.EmbeddingModelFactory;
 import com.rag.core.factory.VectorStoreRegistry;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.parser.DocumentParseFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,6 +68,8 @@ public class RagToolService {
     private final KbDocumentMapper kbDocumentMapper;
     private final DocChunkMapper docChunkMapper;
     private final Executor ragTaskExecutor;
+    /** JSON 序列化器（v3：生成 params_snapshot 参数快照） */
+    private final ObjectMapper objectMapper;
 
     public RagToolService(DocumentParseFactory parseFactory,
                           ChunkerFactory chunkerFactory,
@@ -72,7 +79,8 @@ public class RagToolService {
                           KbConfigService kbConfigService,
                           KbDocumentMapper kbDocumentMapper,
                           DocChunkMapper docChunkMapper,
-                          Executor ragTaskExecutor) {
+                          Executor ragTaskExecutor,
+                          ObjectMapper objectMapper) {
         this.parseFactory = parseFactory;
         this.chunkerFactory = chunkerFactory;
         this.embeddingModelFactory = embeddingModelFactory;
@@ -82,6 +90,7 @@ public class RagToolService {
         this.kbDocumentMapper = kbDocumentMapper;
         this.docChunkMapper = docChunkMapper;
         this.ragTaskExecutor = ragTaskExecutor;
+        this.objectMapper = objectMapper;
     }
 
     // ==================== 单文件处理（v2 重构） ====================
@@ -151,15 +160,13 @@ public class RagToolService {
             String fileName = (String) docs.get(0).getMetadata().get("fileName");
 
             // ===== 2. 插入文档记录（PENDING 状态，获取 doc_id） =====
+            // v3 变更：分片策略下沉到分片维度，kb_document 不再持久化分片策略字段
             KbDocument kbDoc = KbDocument.builder()
                     .kbId(kbId)
                     .tenantId(tenantId)
                     .fileName(fileName != null ? fileName : originalFilename)
                     .fileType(contentType)
                     .fileSize(file.getSize())
-                    .chunkStrategy(chunkStrategy)   // 文档级策略，由上传接口传入；未设置则 buildChunkConfig 回退 FIXED_SIZE
-                    .chunkSize(chunkSize)
-                    .chunkOverlap(chunkOverlap)
                     .processStatus(ProcessStatusEnum.PARSED.name())
                     .chunkCount(0)
                     .ownerId(userId)
@@ -187,10 +194,10 @@ public class RagToolService {
                 }
             }
 
-            // ===== 3. 从文档维度构建 ChunkConfig =====
-            ChunkConfig chunkConfig = kbConfigService.buildChunkConfig(kbDoc);
-            log.info("文档级分片策略: {}, size={}, overlap={}",
-                    kbDoc.getChunkStrategy() != null ? kbDoc.getChunkStrategy() : "FIXED_SIZE(默认)",
+            // ===== 3. 从分片策略参数构建 ChunkConfig（v3：不再从文档实体读取） =====
+            ChunkConfig chunkConfig = kbConfigService.buildChunkConfig(chunkStrategy, chunkSize, chunkOverlap);
+            log.info("分片策略: {}, size={}, overlap={}",
+                    chunkStrategy != null && !chunkStrategy.isBlank() ? chunkStrategy : "FIXED_SIZE(默认)",
                     chunkConfig.getFixedChunkSize(), chunkConfig.getSlideOverlap());
 
             // ===== 4. 推进状态 → CHUNKING =====
@@ -262,6 +269,10 @@ public class RagToolService {
             log.info("向量化入库完成, docId={}, chunks={}", docId, chunkCount);
 
             // ===== 11. 分片原文持久化到 doc_chunk 表 =====
+            // v3 变更：写入分片策略（chunk_mode）与参数快照（params_snapshot，JSON）
+            String chunkMode = (chunkStrategy != null && !chunkStrategy.isBlank())
+                    ? chunkStrategy.toUpperCase() : ChunkStrategyEnum.FIXED_SIZE.name();
+            String paramsSnapshot = buildParamsSnapshot(chunkMode, chunkSize, chunkOverlap, customSplitter);
             List<DocChunk> docChunks = new ArrayList<>();
             for (int i = 0; i < chunks.size(); i++) {
                 Document chunk = chunks.get(i);
@@ -275,6 +286,8 @@ public class RagToolService {
                         .parentChunkId(null)
                         .content(chunk.getText())
                         .vectorId((String) chunk.getMetadata().get("id")) // Weaviate 返回的 object ID
+                        .chunkMode(chunkMode)
+                        .paramsSnapshot(paramsSnapshot)
                         .createTime(new Date())
                         .build();
                 docChunks.add(dc);
@@ -429,6 +442,53 @@ public class RagToolService {
     }
 
     // ==================== 工具方法 ====================
+
+    /**
+     * 构建分片参数快照（v3：doc_chunk.params_snapshot 的 JSON 内容）。
+     * <p>依据 {@code chunkMode} 提取实际生效的分块参数：
+     * <ul>
+     *   <li>{@code TEXT_MODEL}：从 {@link SizeTextSplitter} 提取 delimiter / maxTokens / chunkOverlap</li>
+     *   <li>{@code HIERARCHICAL_MODEL}：从 {@link ParentChildTextSplitter} 提取父子块五参数</li>
+     *   <li>其余模式：记录 chunkSize / chunkOverlap（未指定时回退默认 500 / 50）</li>
+     * </ul>
+     * 序列化失败或参数为空时返回 {@code null}（JSON 列允许 NULL）。</p>
+     *
+     * @param chunkMode      分片策略名（如 FIXED_SIZE / TEXT_MODEL / HIERARCHICAL_MODEL）
+     * @param chunkSize      分片大小（普通模式，可空）
+     * @param chunkOverlap   分片重叠窗口（普通模式，可空）
+     * @param customSplitter 自定义带参 splitter（text-model / hierarchical-model，可为 null）
+     * @return 参数快照 JSON 字符串，无参数或序列化失败时为 null
+     */
+    private String buildParamsSnapshot(String chunkMode, Integer chunkSize, Integer chunkOverlap,
+                                       TextSplitter customSplitter) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        if (customSplitter instanceof SizeTextSplitter s) {
+            // text_model：通用文本分块参数
+            params.put("delimiter", s.getDelimiter());
+            params.put("maxTokens", s.getMaxTokens());
+            params.put("chunkOverlap", s.getChunkOverlap());
+        } else if (customSplitter instanceof ParentChildTextSplitter p) {
+            // hierarchical_model：层级父子分块参数
+            params.put("parentSeparator", p.getParentSeparator());
+            params.put("parentMaxTokens", p.getParentMaxTokens());
+            params.put("childSeparator", p.getChildSeparator());
+            params.put("childMaxTokens", p.getChildMaxTokens());
+            params.put("parentMode", p.getParentMode());
+        } else {
+            // 其余模式（含 FIXED_SIZE 等）：固定分片大小与重叠窗口
+            params.put("chunkSize", chunkSize != null ? chunkSize : 500);
+            params.put("chunkOverlap", chunkOverlap != null ? chunkOverlap : 50);
+        }
+        if (params.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(params);
+        } catch (JsonProcessingException e) {
+            log.warn("分片参数快照序列化失败, chunkMode={}, error={}", chunkMode, e.getMessage());
+            return null;
+        }
+    }
 
     private String detectContentType(String filename) {
         if (filename == null) {

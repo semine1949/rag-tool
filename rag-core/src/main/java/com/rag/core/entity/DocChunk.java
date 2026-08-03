@@ -8,13 +8,15 @@ import lombok.NoArgsConstructor;
 import java.util.Date;
 
 /**
- * 文档分片实体（v2 新增）
+ * 文档分片实体（v2 新增，v3 分片策略下沉）
  * <p>作为业务库与向量数据库之间的元数据映射桥梁，持久化全部分片原文。</p>
  * <p>核心职责：
  *   1. 持久化分片原文，支撑内容检索、溯源与上下文补全
  *   2. 记录分片在文档内的顺序与层级关系（parent_chunk_id）
  *   3. 承载向量数据库对象 ID（vector_id），实现业务ID→向量ID的双向映射
  *   4. 记录分片的父子类型（chunk_type），区分层级分片与扁平分片
+ *   5. [v3 新增] 记录分片策略（chunk_mode）与参数快照（params_snapshot），
+ *      分片策略从文档维度下沉到分片维度，支持分片级溯源与策略复盘
  * </p>
  */
 @Data
@@ -42,6 +44,10 @@ public class DocChunk {
     private String content;
     /** 向量数据库中的对象 ID（如 Weaviate object ID），用于业务与向量间的双向映射 */
     private String vectorId;
+    /** [v3 新增] 本分片采用的分片策略名（如 FIXED_SIZE / TEXT_MODEL / HIERARCHICAL_MODEL） */
+    private String chunkMode;
+    /** [v3 新增] 分片参数快照（JSON），记录该分片实际生效的分块参数 */
+    private String paramsSnapshot;
     /** 创建时间 */
     private Date createTime;
     /** 最后更新时间 */

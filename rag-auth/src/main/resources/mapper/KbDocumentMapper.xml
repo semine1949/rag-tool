@@ -10,10 +10,7 @@
         <result property="fileName" column="file_name"/>
         <result property="fileType" column="file_type"/>
         <result property="fileSize" column="file_size"/>
-        <!-- v2 新增：文档维度分片策略 -->
-        <result property="chunkStrategy" column="chunk_strategy"/>
-        <result property="chunkSize" column="chunk_size"/>
-        <result property="chunkOverlap" column="chunk_overlap"/>
+        <!-- v3 变更：分片策略已下沉到分片维度（doc_chunk），本表不再包含策略字段 -->
         <!-- v2 新增：处理状态机 -->
         <result property="processStatus" column="process_status"/>
         <result property="chunkCount" column="chunk_count"/>
@@ -27,28 +24,24 @@
 
     <select id="findById" resultMap="KbDocumentResultMap">
         SELECT doc_id, kb_id, tenant_id, file_name, file_type, file_size,
-               chunk_strategy, chunk_size, chunk_overlap, process_status,
-               chunk_count, version, owner_id, collection_name,
+               process_status, chunk_count, version, owner_id, collection_name,
                upload_time, create_time, update_time
         FROM kb_document WHERE doc_id = #{docId}
     </select>
 
     <select id="findByKbId" resultMap="KbDocumentResultMap">
         SELECT doc_id, kb_id, tenant_id, file_name, file_type, file_size,
-               chunk_strategy, chunk_size, chunk_overlap, process_status,
-               chunk_count, version, owner_id, collection_name,
+               process_status, chunk_count, version, owner_id, collection_name,
                upload_time, create_time, update_time
         FROM kb_document WHERE kb_id = #{kbId} ORDER BY upload_time DESC
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="docId" keyColumn="doc_id">
         INSERT INTO kb_document (kb_id, tenant_id, file_name, file_type, file_size,
-                                 chunk_strategy, chunk_size, chunk_overlap, process_status,
-                                 chunk_count, version, owner_id, collection_name,
+                                 process_status, chunk_count, version, owner_id, collection_name,
                                  upload_time, create_time)
         VALUES (#{kbId}, #{tenantId}, #{fileName}, #{fileType}, #{fileSize},
-                #{chunkStrategy}, #{chunkSize}, #{chunkOverlap}, #{processStatus},
-                #{chunkCount}, #{version}, #{ownerId}, #{collectionName},
+                #{processStatus}, #{chunkCount}, #{version}, #{ownerId}, #{collectionName},
                 #{uploadTime}, #{createTime})
     </insert>
 

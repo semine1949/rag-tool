@@ -89,7 +89,7 @@ public class AuthServiceImpl implements AuthService {
         // 3. 确保 TENANT_ADMIN 角色存在并赋予管理员
         Role tenantAdminRole = roleMapper.findByCode(TENANT_ROLE_ADMIN);
         if (tenantAdminRole == null) {
-            log.warn("角色字典缺少 TENANT_ADMIN，请检查 schema.sql 种子数据");
+            log.warn("角色字典缺少 TENANT_ADMIN，请检查 schema-v2.sql 种子数据");
             return;
         }
         UserTenantRole existing = userTenantRoleMapper.findByUserAndTenant(admin.getUserId(), tenant.getTenantId());

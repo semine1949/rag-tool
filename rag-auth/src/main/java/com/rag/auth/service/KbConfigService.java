@@ -5,7 +5,6 @@ import com.rag.core.config.ChunkConfig;
 import com.rag.core.config.EmbeddingConfig;
 import com.rag.core.config.EmbeddingProperties;
 import com.rag.core.config.WeaviateCollectionConfig;
-import com.rag.core.entity.KbDocument;
 import com.rag.core.entity.KnowledgeBase;
 import com.rag.core.enums.ChunkStrategyEnum;
 import com.rag.core.enums.EmbeddingModelType;
@@ -19,9 +18,9 @@ import java.util.Date;
 import java.util.Set;
 
 /**
- * 知识库配置服务（v2 重构）
- * <p>分片策略已从知识库下移到文档维度，知识库仅保留 embedding_model。</p>
- * <p>新增 buildChunkConfig(KbDocument) 从文档维度构建分片配置。</p>
+ * 知识库配置服务（v2/v3 重构）
+ * <p>分片策略已从知识库下移到文档维度，再进一步下沉到分片维度，知识库仅保留 embedding_model。</p>
+ * <p>buildChunkConfig 接收显式分片策略参数构建分片配置，不再依赖文档实体字段。</p>
  */
 @Service
 public class KbConfigService {
@@ -104,26 +103,28 @@ public class KbConfigService {
         log.info("更新知识库 Embedding 模型成功, kbId={}", kbId);
     }
 
-    // ==================== v2 新增：从文档维度构建 ChunkConfig ====================
+    // ==================== v2/v3：从分片策略参数构建 ChunkConfig ====================
 
     /**
-     * 从文档维度的分片策略配置构建 {@link ChunkConfig}。
-     * <p>优先使用文档自身配置，未指定时回退 application.yml 默认值。</p>
+     * 从显式的分片策略参数构建 {@link ChunkConfig}。
+     * <p>v3 变更：分片策略从文档维度下沉到分片维度，不再从 {@link KbDocument} 读取，
+     * 改为由上传接口透传的分片策略参数（chunkStrategy / chunkSize / chunkOverlap）构建。
+     * 未指定时回退 application.yml 默认值。</p>
      *
-     * @param doc 知识库文档（包含 chunkStrategy/chunkSize/chunkOverlap 字段）
+     * @param chunkStrategy 分片策略名（如 FIXED_SIZE / TEXT_MODEL / HIERARCHICAL_MODEL，可空）
+     * @param chunkSize     分片大小（字符数，可空）
+     * @param chunkOverlap  分片重叠窗口（字符数，可空）
      * @return 合并后的分片配置
      */
-    public ChunkConfig buildChunkConfig(KbDocument doc) {
-        ChunkStrategyEnum strategy = resolveChunkStrategy(doc.getChunkStrategy());
-        int chunkSize = (doc.getChunkSize() != null && doc.getChunkSize() > 0)
-                ? doc.getChunkSize() : defaultFixedSize;
-        int chunkOverlap = (doc.getChunkOverlap() != null)
-                ? doc.getChunkOverlap() : defaultSlideOverlap;
+    public ChunkConfig buildChunkConfig(String chunkStrategy, Integer chunkSize, Integer chunkOverlap) {
+        ChunkStrategyEnum strategy = resolveChunkStrategy(chunkStrategy);
+        int size = (chunkSize != null && chunkSize > 0) ? chunkSize : defaultFixedSize;
+        int overlap = (chunkOverlap != null) ? chunkOverlap : defaultSlideOverlap;
 
         return ChunkConfig.builder()
                 .enableStrategies(Set.of(strategy))
-                .fixedChunkSize(chunkSize)
-                .slideOverlap(chunkOverlap)
+                .fixedChunkSize(size)
+                .slideOverlap(overlap)
                 .semanticThreshold(defaultSemanticThreshold)
                 .splitTableSingleChunk(defaultSplitTable)
                 .splitCodeByFunction(defaultSplitCode)

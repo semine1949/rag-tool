@@ -97,9 +97,10 @@ CREATE TABLE kb_role_permission (
     KEY idx_kb_id (kb_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识库角色权限表';
 
--- ==================== 知识库文档登记表（v2 重构） ====================
--- [v2 新增] chunk_strategy / chunk_size / chunk_overlap：分片策略从知识库下移到文档维度，
---           同一知识库下不同文档可采用差异化的文本分割策略。
+-- ==================== 知识库文档登记表（v2 重构，v3 分片策略下沉） ====================
+-- [v3 变更] 分片策略进一步下沉到分片维度（doc_chunk）：
+--           删除 chunk_strategy / chunk_size / chunk_overlap 三列，
+--           每个分片的分片策略与参数快照记录在 doc_chunk（chunk_mode + params_snapshot）。
 -- [v2 新增] process_status：文档全流程处理状态机，
 --           覆盖上传→解析→分块→向量化→入库/失败的完整生命周期。
 DROP TABLE IF EXISTS kb_document;
@@ -110,11 +111,6 @@ CREATE TABLE kb_document (
     file_name             VARCHAR(512) NOT NULL COMMENT '文件名',
     file_type             VARCHAR(32)  DEFAULT NULL COMMENT '文件类型（扩展名，如 pdf/docx/txt）',
     file_size             BIGINT       DEFAULT 0 COMMENT '文件大小（字节）',
-
-    -- 分片策略（v2 从知识库下沉到文档维度）
-    chunk_strategy        VARCHAR(64)  DEFAULT 'FIXED_SIZE' COMMENT '分片策略：FIXED_SIZE/SEMANTIC/TABLE/CODE_FUNCTION/TITLE_HIERARCHY/PARENT_CHILD',
-    chunk_size            INT          DEFAULT 500 COMMENT '分片大小（字符数）',
-    chunk_overlap         INT          DEFAULT 50 COMMENT '分片重叠窗口（字符数）',
 
     -- 文档处理状态机（v2 新增）
     process_status        VARCHAR(32)  NOT NULL DEFAULT 'PENDING' COMMENT '处理状态：PENDING=待处理, PARSING=解析中, PARSED=解析完成, CHUNKING=分块中, CHUNKED=分块完成, VECTORIZING=向量化中, COMPLETED=已完成, FAILED=处理失败',
@@ -132,7 +128,7 @@ CREATE TABLE kb_document (
     KEY idx_tenant_id (tenant_id),
     KEY idx_process_status (process_status),
     KEY idx_owner_id (owner_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识库文档登记表（v2：新增分片策略与处理状态机）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识库文档登记表（v3：分片策略已下沉至分片维度 doc_chunk）';
 
 -- ==================== 文档版本表（v2 修复关联一致性） ====================
 -- [v2 修复] 将 document_id（VARCHAR(128)）改为 doc_id（BIGINT），
@@ -158,13 +154,16 @@ CREATE TABLE doc_version (
     KEY idx_document_version (doc_id, version)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文档版本表（v2：doc_id 改为 BIGINT，与 kb_document 保持一致）';
 
--- ==================== 文档分片表（v2 新增） ====================
+-- ==================== 文档分片表（v2 新增，v3 分片策略下沉） ====================
 -- 作为业务库与向量数据库之间的元数据映射桥梁，持久化全部分片原文。
 -- 核心职责：
 --   1. 持久化分片原文，支撑内容检索、溯源与上下文补全
 --   2. 记录分片在文档内的顺序与层级关系（parent_chunk_id）
 --   3. 承载向量数据库对象 ID（vector_id），实现业务ID→向量ID的双向映射
 --   4. 记录分片的父子类型（chunk_type），区分层级分片与扁平分片
+-- [v3 新增] 分片策略下沉到分片维度：
+--   chunk_mode        记录该分片实际采用的分片策略名（如 FIXED_SIZE / TEXT_MODEL / HIERARCHICAL_MODEL）
+--   params_snapshot   以 JSON 形式记录该分片实际生效的分块参数快照
 DROP TABLE IF EXISTS doc_chunk;
 CREATE TABLE doc_chunk (
     chunk_id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '分片ID（主键）',
@@ -184,6 +183,10 @@ CREATE TABLE doc_chunk (
     -- 向量映射
     vector_id             VARCHAR(128) DEFAULT NULL COMMENT '向量数据库中的对象 ID（如 Weaviate object ID），用于业务与向量间的双向映射',
 
+    -- 分片策略与参数快照（v3 新增：分片策略下沉到分片维度）
+    chunk_mode            VARCHAR(64)  NOT NULL DEFAULT 'FIXED_SIZE' COMMENT '分片策略名：FIXED_SIZE/SEMANTIC/TABLE/CODE_FUNCTION/TITLE_HIERARCHY/PARENT_CHILD/TEXT_MODEL/HIERARCHICAL_MODEL',
+    params_snapshot       TEXT         DEFAULT NULL COMMENT '分片参数快照（JSON）：记录该分片实际生效的分块参数，如固定分片大小/重叠窗口、text_model 的 delimiter/maxTokens/chunkOverlap、hierarchical_model 的父子块参数',
+
     -- 时间戳
     create_time           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
@@ -194,8 +197,9 @@ CREATE TABLE doc_chunk (
     KEY idx_version_id (version_id),
     KEY idx_doc_chunk_order (doc_id, chunk_index),
     KEY idx_vector_id (vector_id),
-    KEY idx_parent_chunk_id (parent_chunk_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文档分片表（v2：分片原文持久化 + 向量元数据映射桥梁）';
+    KEY idx_parent_chunk_id (parent_chunk_id),
+    KEY idx_chunk_mode (chunk_mode)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文档分片表（v3：分片策略与参数快照下沉至分片维度）';
 
 -- ==================== 角色字典种子数据 ====================
 INSERT INTO sys_role (role_id, role_code, role_name, description, status)
@@ -229,4 +233,12 @@ ON DUPLICATE KEY UPDATE role_name = VALUES(role_name), description = VALUES(desc
 --
 -- 6. 默认租户（tenant_id=1）+ 管理员 admin 由 AuthServiceImpl.initDefaultAdmin()
 --    在首次启动时自动创建，保持与 v1 一致的初始化行为。
+--
+-- ==================== v3 核心变更说明 ====================
+-- 7. 【分片策略下沉到分片维度】
+--    kb_document 移除 chunk_strategy / chunk_size / chunk_overlap 三列，
+--    文档登记表不再持久化分片策略；改为在 doc_chunk 记录每个分片的：
+--      chunk_mode        -- 分片策略名（FIXED_SIZE / TEXT_MODEL / HIERARCHICAL_MODEL 等）
+--      params_snapshot   -- 参数快照（JSON），记录该分片实际生效的分块参数
+--    同一文档内不同分片可携带各自的分片策略与参数溯源信息，便于检索结果溯源与策略复盘。
 -- ============================================================================

@@ -14,43 +14,53 @@
         <result property="parentChunkId" column="parent_chunk_id"/>
         <result property="content" column="content"/>
         <result property="vectorId" column="vector_id"/>
+        <!-- v3 新增：分片策略与参数快照 -->
+        <result property="chunkMode" column="chunk_mode"/>
+        <result property="paramsSnapshot" column="params_snapshot"/>
         <result property="createTime" column="create_time"/>
         <result property="updateTime" column="update_time"/>
     </resultMap>
 
     <select id="findById" resultMap="DocChunkResultMap">
         SELECT chunk_id, doc_id, tenant_id, kb_id, version_id, chunk_index,
-               chunk_type, parent_chunk_id, content, vector_id, create_time, update_time
+               chunk_type, parent_chunk_id, content, vector_id,
+               chunk_mode, params_snapshot, create_time, update_time
         FROM doc_chunk WHERE chunk_id = #{chunkId}
     </select>
 
     <select id="findByDocId" resultMap="DocChunkResultMap">
         SELECT chunk_id, doc_id, tenant_id, kb_id, version_id, chunk_index,
-               chunk_type, parent_chunk_id, content, vector_id, create_time, update_time
+               chunk_type, parent_chunk_id, content, vector_id,
+               chunk_mode, params_snapshot, create_time, update_time
         FROM doc_chunk WHERE doc_id = #{docId} ORDER BY chunk_index ASC
     </select>
 
     <select id="findByDocIdAndVersion" resultMap="DocChunkResultMap">
         SELECT chunk_id, doc_id, tenant_id, kb_id, version_id, chunk_index,
-               chunk_type, parent_chunk_id, content, vector_id, create_time, update_time
+               chunk_type, parent_chunk_id, content, vector_id,
+               chunk_mode, params_snapshot, create_time, update_time
         FROM doc_chunk WHERE doc_id = #{docId} AND version_id = #{versionId}
         ORDER BY chunk_index ASC
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="chunkId" keyColumn="chunk_id">
         INSERT INTO doc_chunk (doc_id, tenant_id, kb_id, version_id, chunk_index,
-                               chunk_type, parent_chunk_id, content, vector_id, create_time)
+                               chunk_type, parent_chunk_id, content, vector_id,
+                               chunk_mode, params_snapshot, create_time)
         VALUES (#{docId}, #{tenantId}, #{kbId}, #{versionId}, #{chunkIndex},
-                #{chunkType}, #{parentChunkId}, #{content}, #{vectorId}, #{createTime})
+                #{chunkType}, #{parentChunkId}, #{content}, #{vectorId},
+                #{chunkMode}, #{paramsSnapshot}, #{createTime})
     </insert>
 
     <insert id="batchInsert" useGeneratedKeys="true" keyProperty="chunkId" keyColumn="chunk_id">
         INSERT INTO doc_chunk (doc_id, tenant_id, kb_id, version_id, chunk_index,
-                               chunk_type, parent_chunk_id, content, vector_id, create_time)
+                               chunk_type, parent_chunk_id, content, vector_id,
+                               chunk_mode, params_snapshot, create_time)
         VALUES
         <foreach collection="list" item="item" separator=",">
             (#{item.docId}, #{item.tenantId}, #{item.kbId}, #{item.versionId}, #{item.chunkIndex},
-             #{item.chunkType}, #{item.parentChunkId}, #{item.content}, #{item.vectorId}, #{item.createTime})
+             #{item.chunkType}, #{item.parentChunkId}, #{item.content}, #{item.vectorId},
+             #{item.chunkMode}, #{item.paramsSnapshot}, #{item.createTime})
         </foreach>
     </insert>
 

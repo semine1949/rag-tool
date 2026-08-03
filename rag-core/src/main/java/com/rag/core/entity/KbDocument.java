@@ -8,8 +8,11 @@ import lombok.NoArgsConstructor;
 import java.util.Date;
 
 /**
- * 知识库文档登记实体（v2 重构）
- * <p>v2 变更：分片策略从知识库下移到文档维度，支持同一知识库下不同文档采用不同切分策略</p>
+ * 知识库文档登记实体（v2 重构，v3 分片策略下沉）
+ * <p>v2 变更：分片策略从知识库下移到文档维度，支持同一知识库下不同文档采用不同切分策略。</p>
+ * <p>v3 变更：分片策略从文档维度进一步下沉到分片维度（doc_chunk），
+ * 本实体不再持有 chunk_strategy / chunk_size / chunk_overlap 字段，
+ * 每个分片的分片策略与参数快照记录在 doc_chunk（chunk_mode + params_snapshot）。</p>
  */
 @Data
 @Builder
@@ -28,14 +31,6 @@ public class KbDocument {
     private String fileType;
     /** 文件大小（字节） */
     private Long fileSize;
-
-    // ===== 分片策略（v2 从知识库下沉到文档维度） =====
-    /** 分片策略：FIXED_SIZE/SEMANTIC/TABLE/CODE_FUNCTION/TITLE_HIERARCHY/PARENT_CHILD */
-    private String chunkStrategy;
-    /** 分片大小（字符数） */
-    private Integer chunkSize;
-    /** 分片重叠窗口（字符数） */
-    private Integer chunkOverlap;
 
     // ===== 文档处理状态机（v2 新增） =====
     /** 处理状态：PENDING/PARSING/PARSED/CHUNKING/CHUNKED/VECTORIZING/COMPLETED/FAILED */

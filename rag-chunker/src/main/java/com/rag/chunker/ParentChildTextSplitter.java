@@ -84,6 +84,23 @@ public class ParentChildTextSplitter extends ConfigurableTextSplitter {
         this.parentMode = parentMode;
     }
 
+    // ===== 参数 getter（v3：供参数快照提取） =====
+
+    /** 父块分隔符 */
+    public String getParentSeparator() { return parentSeparator; }
+
+    /** 父块最大长度 */
+    public int getParentMaxTokens() { return parentMaxTokens; }
+
+    /** 子块分隔符 */
+    public String getChildSeparator() { return childSeparator; }
+
+    /** 子块最大长度 */
+    public int getChildMaxTokens() { return childMaxTokens; }
+
+    /** 父块粒度模式 */
+    public String getParentMode() { return parentMode; }
+
     /**
      * 切分主逻辑：先生成父块，再将每个父块细分为子块。
      *

@@ -54,6 +54,17 @@ public class SizeTextSplitter extends ConfigurableTextSplitter {
         this.chunkOverlap = chunkOverlap;
     }
 
+    // ===== 参数 getter（v3：供参数快照提取） =====
+
+    /** 分隔符 */
+    public String getDelimiter() { return delimiter; }
+
+    /** 单个块最大长度 */
+    public int getMaxTokens() { return maxTokens; }
+
+    /** 硬截断时的重叠字符数 */
+    public int getChunkOverlap() { return chunkOverlap; }
+
     /**
      * 切分主逻辑，严格按通用文本分块策略执行。
      *
