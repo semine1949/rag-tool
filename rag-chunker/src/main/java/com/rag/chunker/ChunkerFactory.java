@@ -41,6 +41,16 @@ public class ChunkerFactory {
             }
         }
 
+        // 独立运行模式：TEXT_MODEL / HIERARCHICAL_MODEL 不参与多阶段编排，
+        // 直接运行对应的 splitter（SizeTextSplitter / ParentChildTextSplitter）并返回结果
+        if (strategies.contains(ChunkStrategyEnum.TEXT_MODEL)
+                || strategies.contains(ChunkStrategyEnum.HIERARCHICAL_MODEL)) {
+            List<Document> independent = run(strategies, ChunkStrategyEnum.TEXT_MODEL, documents);
+            independent.addAll(run(strategies, ChunkStrategyEnum.HIERARCHICAL_MODEL, documents));
+            log.info("独立分片策略执行完成（TEXT_MODEL/HIERARCHICAL_MODEL），共生成 {} 个Chunk", independent.size());
+            return independent;
+        }
+
         // 第一阶段：表格、代码块
         allChunks.addAll(run(strategies, ChunkStrategyEnum.TABLE, documents));
         allChunks.addAll(run(strategies, ChunkStrategyEnum.CODE_FUNCTION, documents));

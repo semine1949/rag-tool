@@ -4,6 +4,8 @@ import com.rag.auth.context.RequestContext;
 import com.rag.auth.service.KbAccessService;
 import com.rag.boot.service.FileProcessResult;
 import com.rag.boot.service.RagToolService;
+import com.rag.chunker.ParentChildTextSplitter;
+import com.rag.chunker.SizeTextSplitter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -51,6 +53,70 @@ public class RagController {
             return ResponseEntity.ok(Map.of("code", 200, "data", result));
         } catch (Exception e) {
             log.error("文件上传处理失败", e);
+            return ResponseEntity.badRequest().body(Map.of("code", 500, "msg", e.getMessage()));
+        }
+    }
+
+    /**
+     * text_model 上传文件落库 API。
+     * <p>上传文件 + kbId，按 {@link SizeTextSplitter} 参数分块后落库（解析→分块→向量化→入库）。
+     * splitter 参数（delimiter / maxTokens / chunkOverlap）作为接口参数传入，未传入时使用默认值。</p>
+     */
+    @PostMapping(value = "/upload/text-model", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> uploadTextModel(
+            @RequestPart("file") MultipartFile file,
+            @RequestParam("kbId") Long kbId,
+            @RequestParam(value = "delimiter", required = false) String delimiter,
+            @RequestParam(value = "maxTokens", required = false) Integer maxTokens,
+            @RequestParam(value = "chunkOverlap", required = false) Integer chunkOverlap) {
+        try {
+            Long userId = requireAuth();
+            kbAccessService.checkUploadPermission(userId, kbId);
+            // 未传入参数时采用默认值构造带参 splitter
+            String sep = delimiter != null ? delimiter : "\n";
+            int maxTk = maxTokens != null ? maxTokens : 1024;
+            int overlap = chunkOverlap != null ? chunkOverlap : 50;
+            SizeTextSplitter splitter = new SizeTextSplitter(sep, maxTk, overlap);
+            FileProcessResult result = ragToolService.processFileWithSplitter(
+                    file, kbId, null, "TEXT_MODEL", splitter);
+            return ResponseEntity.ok(Map.of("code", 200, "data", result));
+        } catch (Exception e) {
+            log.error("text-model 上传落库失败", e);
+            return ResponseEntity.badRequest().body(Map.of("code", 500, "msg", e.getMessage()));
+        }
+    }
+
+    /**
+     * hierarchical_model 上传文件落库 API。
+     * <p>上传文件 + kbId，按 {@link ParentChildTextSplitter} 参数分块后落库（解析→父块+子块→向量化→入库）。
+     * splitter 参数（parentSeparator / parentMaxTokens / childSeparator / childMaxTokens / parentMode）
+     * 作为接口参数传入，未传入时使用默认值。</p>
+     */
+    @PostMapping(value = "/upload/hierarchical-model", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> uploadHierarchicalModel(
+            @RequestPart("file") MultipartFile file,
+            @RequestParam("kbId") Long kbId,
+            @RequestParam(value = "parentSeparator", required = false) String parentSeparator,
+            @RequestParam(value = "parentMaxTokens", required = false) Integer parentMaxTokens,
+            @RequestParam(value = "childSeparator", required = false) String childSeparator,
+            @RequestParam(value = "childMaxTokens", required = false) Integer childMaxTokens,
+            @RequestParam(value = "parentMode", required = false) String parentMode) {
+        try {
+            Long userId = requireAuth();
+            kbAccessService.checkUploadPermission(userId, kbId);
+            // 未传入参数时采用默认值构造带参 splitter
+            String pSep = parentSeparator != null ? parentSeparator : "\n\n\n";
+            int pMaxTk = parentMaxTokens != null ? parentMaxTokens : 2048;
+            String cSep = childSeparator != null ? childSeparator : "\n\n";
+            int cMaxTk = childMaxTokens != null ? childMaxTokens : 1024;
+            String pMode = parentMode != null ? parentMode : "paragraph";
+            ParentChildTextSplitter splitter = new ParentChildTextSplitter(
+                    pSep, pMaxTk, cSep, cMaxTk, pMode);
+            FileProcessResult result = ragToolService.processFileWithSplitter(
+                    file, kbId, null, "HIERARCHICAL_MODEL", splitter);
+            return ResponseEntity.ok(Map.of("code", 200, "data", result));
+        } catch (Exception e) {
+            log.error("hierarchical-model 上传落库失败", e);
             return ResponseEntity.badRequest().body(Map.of("code", 500, "msg", e.getMessage()));
         }
     }

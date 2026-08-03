@@ -5,6 +5,8 @@ import com.rag.auth.mapper.*;
 import com.rag.auth.service.*;
 import com.rag.boot.interceptor.JwtAuthInterceptor;
 import com.rag.chunker.ChunkerFactory;
+import com.rag.chunker.ParentChildTextSplitter;
+import com.rag.chunker.SizeTextSplitter;
 import com.rag.chunker.impl.*;
 import com.rag.core.config.EmbeddingProperties;
 import com.rag.core.enums.ChunkStrategyEnum;
@@ -125,6 +127,9 @@ public class RagCoreConfig implements WebMvcConfigurer {
         chunkerMap.put(ChunkStrategyEnum.CODE_FUNCTION, new CodeFunctionChunker());
         chunkerMap.put(ChunkStrategyEnum.TITLE_HIERARCHY, new TitleHierarchyChunker());
         chunkerMap.put(ChunkStrategyEnum.PARENT_CHILD, new ParentChildChunker());
+        // 通用文本分块（text_model）与层级父子分块（hierarchical_model）使用默认参数
+        chunkerMap.put(ChunkStrategyEnum.TEXT_MODEL, new SizeTextSplitter());
+        chunkerMap.put(ChunkStrategyEnum.HIERARCHICAL_MODEL, new ParentChildTextSplitter());
         // FIXED_SIZE 由框架 RecursiveCharacterTextSplitter 在 ChunkerFactory 内处理
         return new ChunkerFactory(chunkerMap);
     }

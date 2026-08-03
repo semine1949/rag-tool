@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.transformer.splitter.TextSplitter;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.Filter;
@@ -88,9 +89,37 @@ public class RagToolService {
     /**
      * 处理单个上传文件：解析 → 插入文档(PENDING) → 构建文档级ChunkConfig → 分块 →
      * 版本记录 → 向量化入库 → doc_chunk持久化 → COMPLETED。
+     * <p>分块使用 {@link #chunkerFactory} 按文档级策略编排执行。</p>
      */
     public FileProcessResult processFile(MultipartFile file, Long kbId, String changeType,
                                           String chunkStrategy, Integer chunkSize, Integer chunkOverlap) {
+        return processFileInternal(file, kbId, changeType, chunkStrategy, chunkSize, chunkOverlap, null);
+    }
+
+    /**
+     * 处理单个上传文件，但分块使用外部传入的带参 splitter（text-model / hierarchical-model）。
+     * <p>复用 {@link #processFile} 的完整落库流程（解析、状态机、版本、向量化、doc_chunk），
+     * 仅分块步骤替换为 {@code customSplitter.apply(docs)}，用于将 splitter 参数作为接口参数传入的场景。</p>
+     *
+     * @param file          上传文件
+     * @param kbId          知识库 ID
+     * @param changeType    变更类型（可空）
+     * @param chunkStrategy 文档级分片策略名（如 TEXT_MODEL / HIERARCHICAL_MODEL），用于记录到 kb_document
+     * @param customSplitter 带参 splitter 实例
+     * @return 落库结果
+     */
+    public FileProcessResult processFileWithSplitter(MultipartFile file, Long kbId, String changeType,
+                                                     String chunkStrategy, TextSplitter customSplitter) {
+        return processFileInternal(file, kbId, changeType, chunkStrategy, null, null, customSplitter);
+    }
+
+    /**
+     * 单文件处理内部实现：参数 {@code customSplitter} 为空时走 {@link ChunkerFactory} 编排分块，
+     * 非空时直接使用外部传入的 splitter 分块。
+     */
+    private FileProcessResult processFileInternal(MultipartFile file, Long kbId, String changeType,
+                                                  String chunkStrategy, Integer chunkSize, Integer chunkOverlap,
+                                                  TextSplitter customSplitter) {
         if (file == null || file.isEmpty()) {
             throw new RagException("RAG_FILE_EMPTY", "上传文件为空");
         }
@@ -168,7 +197,14 @@ public class RagToolService {
             updateStatus(docId, ProcessStatusEnum.CHUNKING);
 
             // ===== 5. 分块 =====
-            List<Document> chunks = chunkerFactory.chunk(docs, chunkConfig);
+            List<Document> chunks;
+            if (customSplitter != null) {
+                // 使用外部传入的带参 splitter（text-model / hierarchical-model 上传接口）
+                chunks = customSplitter.apply(docs);
+            } else {
+                // 默认走 ChunkerFactory 按文档级策略编排分块
+                chunks = chunkerFactory.chunk(docs, chunkConfig);
+            }
             int chunkCount = chunks.size();
             log.info("分块完成, docId={}, 分片数={}", docId, chunkCount);
 

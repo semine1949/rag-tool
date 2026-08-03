@@ -15,5 +15,9 @@ public enum ChunkStrategyEnum {
     /** 标题层级分片 */
     TITLE_HIERARCHY,
     /** 父子分片 */
-    PARENT_CHILD
+    PARENT_CHILD,
+    /** 通用文本分块策略（text_model），对应 SizeTextSplitter */
+    TEXT_MODEL,
+    /** 层级父子分块策略（hierarchical_model），对应 ParentChildTextSplitter */
+    HIERARCHICAL_MODEL
 }
