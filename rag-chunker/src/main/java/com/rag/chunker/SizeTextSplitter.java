@@ -2,6 +2,7 @@ package com.rag.chunker;
 
 import com.rag.chunker.util.ChunkDocuments;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.transformer.splitter.TextSplitter;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -26,7 +27,7 @@ import java.util.regex.Pattern;
  * 输出每块包含 content / chunkIndex / chunkMode（"text_model"）字段，
  * 经 {@link ChunkDocuments#of} 写入 Spring AI {@link Document} 元数据。
  */
-public class SizeTextSplitter extends ConfigurableTextSplitter {
+public class SizeTextSplitter extends TextSplitter {
 
     /** 块类型标识：通用文本分块策略 */
     public static final String CHUNK_MODE = "text_model";
@@ -64,6 +65,15 @@ public class SizeTextSplitter extends ConfigurableTextSplitter {
 
     /** 硬截断时的重叠字符数 */
     public int getChunkOverlap() { return chunkOverlap; }
+
+    /**
+     * 满足 {@link TextSplitter} 抽象方法要求：原样返回。
+     * <p>主逻辑在 {@link #apply(List)} 中完成，此方法不会被框架默认调用路径走到。</p>
+     */
+    @Override
+    protected List<String> splitText(String text) {
+        return List.of(text);
+    }
 
     /**
      * 切分主逻辑，严格按通用文本分块策略执行。

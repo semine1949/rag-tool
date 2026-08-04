@@ -1,26 +1,22 @@
 package com.rag.auth.service;
 
 import com.rag.auth.mapper.KnowledgeBaseMapper;
-import com.rag.core.config.ChunkConfig;
 import com.rag.core.config.EmbeddingConfig;
 import com.rag.core.config.EmbeddingProperties;
 import com.rag.core.config.WeaviateCollectionConfig;
 import com.rag.core.entity.KnowledgeBase;
-import com.rag.core.enums.ChunkStrategyEnum;
 import com.rag.core.enums.EmbeddingModelType;
 import com.rag.core.factory.VectorStoreRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
-import java.util.Set;
 
 /**
- * 知识库配置服务（v2/v3 重构）
- * <p>分片策略已从知识库下移到文档维度，再进一步下沉到分片维度，知识库仅保留 embedding_model。</p>
- * <p>buildChunkConfig 接收显式分片策略参数构建分片配置，不再依赖文档实体字段。</p>
+ * 知识库配置服务（v2 重构）
+ * <p>分片策略由 {@link com.rag.chunker.ChunkStrategyFactory} 依据 chunkStrategy + SplitterConfig
+ * 统一判定构造，知识库仅保留 embedding_model 相关配置。</p>
  */
 @Service
 public class KbConfigService {
@@ -31,23 +27,6 @@ public class KbConfigService {
     private final VectorStoreRegistry vectorStoreRegistry;
     private final EmbeddingProperties embeddingProperties;
 
-    @Value("${rag.chunk.default.fixed-size:500}")
-    private int defaultFixedSize;
-    @Value("${rag.chunk.default.slide-overlap:50}")
-    private int defaultSlideOverlap;
-    @Value("${rag.chunk.default.semantic-threshold:0.7}")
-    private double defaultSemanticThreshold;
-    @Value("${rag.chunk.default.split-table:true}")
-    private boolean defaultSplitTable;
-    @Value("${rag.chunk.default.split-code:true}")
-    private boolean defaultSplitCode;
-    @Value("${rag.chunk.default.max-title-level:3}")
-    private int defaultMaxTitleLevel;
-    @Value("${rag.chunk.default.parent-chunk-len:1000}")
-    private int defaultParentChunkLen;
-    @Value("${rag.chunk.default.child-chunk-len:200}")
-    private int defaultChildChunkLen;
-
     public KbConfigService(KnowledgeBaseMapper kbMapper,
                            VectorStoreRegistry vectorStoreRegistry,
                            EmbeddingProperties embeddingProperties) {
@@ -57,7 +36,7 @@ public class KbConfigService {
     }
 
     /**
-     * 知识库加载结果（v2：ChunkConfig 改为从文档维度构建，此处仅包含 KB/Embedding/Collection 配置）
+     * 知识库加载结果（仅包含 KB / Embedding / Collection 配置，分片策略由分片工厂统一判定）
      */
     public record KbLoadedConfig(
             KnowledgeBase kb,
@@ -101,49 +80,6 @@ public class KbConfigService {
     public void updateKbEmbeddingModel(Long kbId, String embeddingModel) {
         kbMapper.updateEmbeddingModel(kbId, embeddingModel);
         log.info("更新知识库 Embedding 模型成功, kbId={}", kbId);
-    }
-
-    // ==================== v2/v3：从分片策略参数构建 ChunkConfig ====================
-
-    /**
-     * 从显式的分片策略参数构建 {@link ChunkConfig}。
-     * <p>v3 变更：分片策略从文档维度下沉到分片维度，不再从 {@link KbDocument} 读取，
-     * 改为由上传接口透传的分片策略参数（chunkStrategy / chunkSize / chunkOverlap）构建。
-     * 未指定时回退 application.yml 默认值。</p>
-     *
-     * @param chunkStrategy 分片策略名（如 FIXED_SIZE / TEXT_MODEL / HIERARCHICAL_MODEL，可空）
-     * @param chunkSize     分片大小（字符数，可空）
-     * @param chunkOverlap  分片重叠窗口（字符数，可空）
-     * @return 合并后的分片配置
-     */
-    public ChunkConfig buildChunkConfig(String chunkStrategy, Integer chunkSize, Integer chunkOverlap) {
-        ChunkStrategyEnum strategy = resolveChunkStrategy(chunkStrategy);
-        int size = (chunkSize != null && chunkSize > 0) ? chunkSize : defaultFixedSize;
-        int overlap = (chunkOverlap != null) ? chunkOverlap : defaultSlideOverlap;
-
-        return ChunkConfig.builder()
-                .enableStrategies(Set.of(strategy))
-                .fixedChunkSize(size)
-                .slideOverlap(overlap)
-                .semanticThreshold(defaultSemanticThreshold)
-                .splitTableSingleChunk(defaultSplitTable)
-                .splitCodeByFunction(defaultSplitCode)
-                .maxTitleLevel(defaultMaxTitleLevel)
-                .parentChunkLen(defaultParentChunkLen)
-                .childChunkLen(defaultChildChunkLen)
-                .build();
-    }
-
-    private ChunkStrategyEnum resolveChunkStrategy(String strategy) {
-        if (strategy == null || strategy.isBlank()) {
-            return ChunkStrategyEnum.FIXED_SIZE;
-        }
-        try {
-            return ChunkStrategyEnum.valueOf(strategy.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            log.warn("未知分片策略 '{}'，回退默认 FIXED_SIZE", strategy);
-            return ChunkStrategyEnum.FIXED_SIZE;
-        }
     }
 
     // ==================== 集合管理（Spring AI） ====================

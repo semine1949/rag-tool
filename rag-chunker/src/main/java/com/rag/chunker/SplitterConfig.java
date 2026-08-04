@@ -1,32 +1,51 @@
-package com.rag.boot.controller;
+package com.rag.chunker;
 
 /**
- * 批量上传请求 DTO（Multi-Tenant v2）。
- * <p>支持在请求体中指定文档级分片策略及对应参数，Controller 依据这些参数构造
- * {@link com.rag.chunker.SplitterConfig} 传入 Service。未指定时采用默认参数。</p>
+ * 分片器参数载体（统一配置对象）。
+ * <p>
+ * 作为 {@link ChunkStrategyFactory#getSplitter} 的入参，按分片策略承载不同参数：
+ * <ul>
+ *   <li><b>text-model（SizeTextSplitter）</b>：delimiter / maxTokens / chunkOverlap</li>
+ *   <li><b>hierarchical-model（ParentChildTextSplitter）</b>：parentSeparator / parentMaxTokens /
+ *       childSeparator / childMaxTokens / parentMode</li>
+ * </ul>
+ * 所有字段均可为 {@code null}，为 null 时由具体 splitter 构造回退默认值。
  */
-public class BatchUploadRequest {
-    private Long kbId;
-    /** 分片策略名（text-model / hierarchical-model），可空 */
-    private String chunkStrategy;
+public class SplitterConfig {
 
-    // text-model 参数（可空）
+    // ===== text-model（SizeTextSplitter）参数 =====
+
+    /** 分隔符，默认 "\n"（换行） */
     private String delimiter;
+
+    /** 单个块最大长度（字符数近似 token），默认 1024 */
     private Integer maxTokens;
+
+    /** 硬截断时的重叠字符数，默认 50 */
     private Integer chunkOverlap;
 
-    // hierarchical-model 参数（可空）
+    // ===== hierarchical-model（ParentChildTextSplitter）参数 =====
+
+    /** 父块分隔符，默认 "\n\n\n"（段落边界） */
     private String parentSeparator;
+
+    /** 父块最大长度，默认 2048 */
     private Integer parentMaxTokens;
+
+    /** 子块分隔符，默认 "\n\n" */
     private String childSeparator;
+
+    /** 子块最大长度，默认 1024 */
     private Integer childMaxTokens;
+
+    /** 父块粒度模式，默认 "paragraph" */
     private String parentMode;
 
-    public Long getKbId() { return kbId; }
-    public void setKbId(Long kbId) { this.kbId = kbId; }
+    /** 无参构造（所有字段为 null，由 splitter 采用默认值） */
+    public SplitterConfig() {
+    }
 
-    public String getChunkStrategy() { return chunkStrategy; }
-    public void setChunkStrategy(String chunkStrategy) { this.chunkStrategy = chunkStrategy; }
+    // ==================== getter / setter ====================
 
     public String getDelimiter() { return delimiter; }
     public void setDelimiter(String delimiter) { this.delimiter = delimiter; }

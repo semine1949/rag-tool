@@ -4,17 +4,16 @@ import com.rag.auth.context.RequestContext;
 import com.rag.auth.mapper.DocChunkMapper;
 import com.rag.auth.mapper.KbDocumentMapper;
 import com.rag.auth.service.KbConfigService;
-import com.rag.chunker.ChunkerFactory;
+import com.rag.chunker.ChunkStrategyFactory;
 import com.rag.chunker.ParentChildTextSplitter;
 import com.rag.chunker.SizeTextSplitter;
+import com.rag.chunker.SplitterConfig;
 import com.rag.core.api.DocumentVersionService;
-import com.rag.core.config.ChunkConfig;
 import com.rag.core.config.EmbeddingConfig;
 import com.rag.core.config.WeaviateCollectionConfig;
 import com.rag.core.entity.DocChunk;
 import com.rag.core.entity.DocumentVersion;
 import com.rag.core.entity.KbDocument;
-import com.rag.core.enums.ChunkStrategyEnum;
 import com.rag.core.enums.ProcessStatusEnum;
 import com.rag.core.exception.RagException;
 import com.rag.core.factory.EmbeddingModelFactory;
@@ -43,16 +42,16 @@ import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 /**
- * RAG 核心流水线服务（v2 重构版）
+ * RAG 核心流水线服务
  * <p>
- * 核心变更：
- *   1. 分片策略从知识库维度下移到文档维度（ChunkConfig 从 KbDocument 构建）
- *   2. 新增全流程处理状态机（PENDING→...→COMPLETED/FAILED）
- *   3. 分片原文持久化到 doc_chunk 表
- *   4. 版本表关联使用 doc_id(Long) 替代 documentId(String)
+ * 核心流程：
+ *   1. 解析文件 → 插入文档记录(PENDING)
+ *   2. 通过 {@link ChunkStrategyFactory} 依据 chunkStrategy + SplitterConfig 构造 splitter 分块
+ *   3. 推进全流程处理状态机（PENDING→...→COMPLETED/FAILED）
+ *   4. 分片原文持久化到 doc_chunk 表，向量化入库
+ *   5. 版本表关联使用 doc_id(Long)
  * <p>
- * 流程：解析 → 插入文档记录(PENDING) → 文档维度构建ChunkConfig → 分块 →
- *        版本记录 → 向量化入库 → doc_chunk持久化 → COMPLETED
+ * 流程：解析 → 插入文档记录(PENDING) → 分块 → 版本记录 → 向量化入库 → doc_chunk持久化 → COMPLETED
  */
 @Service
 public class RagToolService {
@@ -60,7 +59,8 @@ public class RagToolService {
     private static final Logger log = LoggerFactory.getLogger(RagToolService.class);
 
     private final DocumentParseFactory parseFactory;
-    private final ChunkerFactory chunkerFactory;
+    /** 封装式分片策略工厂：依据 chunkStrategy + SplitterConfig 构造 splitter */
+    private final ChunkStrategyFactory chunkStrategyFactory;
     private final EmbeddingModelFactory embeddingModelFactory;
     private final VectorStoreRegistry vectorStoreRegistry;
     private final DocumentVersionService versionService;
@@ -68,11 +68,11 @@ public class RagToolService {
     private final KbDocumentMapper kbDocumentMapper;
     private final DocChunkMapper docChunkMapper;
     private final Executor ragTaskExecutor;
-    /** JSON 序列化器（v3：生成 params_snapshot 参数快照） */
+    /** JSON 序列化器（生成 params_snapshot 参数快照） */
     private final ObjectMapper objectMapper;
 
     public RagToolService(DocumentParseFactory parseFactory,
-                          ChunkerFactory chunkerFactory,
+                          ChunkStrategyFactory chunkStrategyFactory,
                           EmbeddingModelFactory embeddingModelFactory,
                           VectorStoreRegistry vectorStoreRegistry,
                           DocumentVersionService versionService,
@@ -82,7 +82,7 @@ public class RagToolService {
                           Executor ragTaskExecutor,
                           ObjectMapper objectMapper) {
         this.parseFactory = parseFactory;
-        this.chunkerFactory = chunkerFactory;
+        this.chunkStrategyFactory = chunkStrategyFactory;
         this.embeddingModelFactory = embeddingModelFactory;
         this.vectorStoreRegistry = vectorStoreRegistry;
         this.versionService = versionService;
@@ -93,42 +93,23 @@ public class RagToolService {
         this.objectMapper = objectMapper;
     }
 
-    // ==================== 单文件处理（v2 重构） ====================
+    // ==================== 单文件处理 ====================
 
     /**
-     * 处理单个上传文件：解析 → 插入文档(PENDING) → 构建文档级ChunkConfig → 分块 →
-     * 版本记录 → 向量化入库 → doc_chunk持久化 → COMPLETED。
-     * <p>分块使用 {@link #chunkerFactory} 按文档级策略编排执行。</p>
-     */
-    public FileProcessResult processFile(MultipartFile file, Long kbId, String changeType,
-                                          String chunkStrategy, Integer chunkSize, Integer chunkOverlap) {
-        return processFileInternal(file, kbId, changeType, chunkStrategy, chunkSize, chunkOverlap, null);
-    }
-
-    /**
-     * 处理单个上传文件，但分块使用外部传入的带参 splitter（text-model / hierarchical-model）。
-     * <p>复用 {@link #processFile} 的完整落库流程（解析、状态机、版本、向量化、doc_chunk），
-     * 仅分块步骤替换为 {@code customSplitter.apply(docs)}，用于将 splitter 参数作为接口参数传入的场景。</p>
+     * 处理单个上传文件：解析 → 插入文档(PENDING) → 分块 → 版本记录 → 向量化入库 →
+     * doc_chunk持久化 → COMPLETED。
+     * <p>分块通过 {@link ChunkStrategyFactory#getSplitter} 依据 chunkStrategy 与 splitterConfig
+     * 构造对应 splitter（text-model / hierarchical-model）执行。config 为 null 或字段为空时采用默认参数。</p>
      *
-     * @param file          上传文件
-     * @param kbId          知识库 ID
-     * @param changeType    变更类型（可空）
-     * @param chunkStrategy 文档级分片策略名（如 TEXT_MODEL / HIERARCHICAL_MODEL），用于记录到 kb_document
-     * @param customSplitter 带参 splitter 实例
+     * @param file           上传文件
+     * @param kbId           知识库 ID
+     * @param changeType     变更类型（可空）
+     * @param chunkStrategy  分片策略名（如 TEXT_MODEL / text-model，可空，未知回退 text-model）
+     * @param splitterConfig 分片参数载体（可空，null 时采用默认参数）
      * @return 落库结果
      */
-    public FileProcessResult processFileWithSplitter(MultipartFile file, Long kbId, String changeType,
-                                                     String chunkStrategy, TextSplitter customSplitter) {
-        return processFileInternal(file, kbId, changeType, chunkStrategy, null, null, customSplitter);
-    }
-
-    /**
-     * 单文件处理内部实现：参数 {@code customSplitter} 为空时走 {@link ChunkerFactory} 编排分块，
-     * 非空时直接使用外部传入的 splitter 分块。
-     */
-    private FileProcessResult processFileInternal(MultipartFile file, Long kbId, String changeType,
-                                                  String chunkStrategy, Integer chunkSize, Integer chunkOverlap,
-                                                  TextSplitter customSplitter) {
+    public FileProcessResult processFile(MultipartFile file, Long kbId, String changeType,
+                                         String chunkStrategy, SplitterConfig splitterConfig) {
         if (file == null || file.isEmpty()) {
             throw new RagException("RAG_FILE_EMPTY", "上传文件为空");
         }
@@ -194,24 +175,19 @@ public class RagToolService {
                 }
             }
 
-            // ===== 3. 从分片策略参数构建 ChunkConfig（v3：不再从文档实体读取） =====
-            ChunkConfig chunkConfig = kbConfigService.buildChunkConfig(chunkStrategy, chunkSize, chunkOverlap);
-            log.info("分片策略: {}, size={}, overlap={}",
-                    chunkStrategy != null && !chunkStrategy.isBlank() ? chunkStrategy : "FIXED_SIZE(默认)",
-                    chunkConfig.getFixedChunkSize(), chunkConfig.getSlideOverlap());
+            // ===== 3. 依据分片策略 + 参数构造 splitter =====
+            String effectiveStrategy = (chunkStrategy != null && !chunkStrategy.isBlank())
+                    ? chunkStrategy : "TEXT_MODEL";
+            TextSplitter splitter = chunkStrategyFactory.getSplitter(chunkStrategy, splitterConfig);
+            log.info("分片策略: {}, 使用splitter: {}", effectiveStrategy,
+                    splitter instanceof SizeTextSplitter ? "SizeTextSplitter(text-model)"
+                            : "ParentChildTextSplitter(hierarchical-model)");
 
             // ===== 4. 推进状态 → CHUNKING =====
             updateStatus(docId, ProcessStatusEnum.CHUNKING);
 
             // ===== 5. 分块 =====
-            List<Document> chunks;
-            if (customSplitter != null) {
-                // 使用外部传入的带参 splitter（text-model / hierarchical-model 上传接口）
-                chunks = customSplitter.apply(docs);
-            } else {
-                // 默认走 ChunkerFactory 按文档级策略编排分块
-                chunks = chunkerFactory.chunk(docs, chunkConfig);
-            }
+            List<Document> chunks = splitter.apply(docs);
             int chunkCount = chunks.size();
             log.info("分块完成, docId={}, 分片数={}", docId, chunkCount);
 
@@ -269,10 +245,10 @@ public class RagToolService {
             log.info("向量化入库完成, docId={}, chunks={}", docId, chunkCount);
 
             // ===== 11. 分片原文持久化到 doc_chunk 表 =====
-            // v3 变更：写入分片策略（chunk_mode）与参数快照（params_snapshot，JSON）
-            String chunkMode = (chunkStrategy != null && !chunkStrategy.isBlank())
-                    ? chunkStrategy.toUpperCase() : ChunkStrategyEnum.FIXED_SIZE.name();
-            String paramsSnapshot = buildParamsSnapshot(chunkMode, chunkSize, chunkOverlap, customSplitter);
+            // 写入分片策略（chunk_mode，取自 splitter 的 CHUNK_MODE）与参数快照（params_snapshot，JSON）
+            String chunkMode = splitter instanceof ParentChildTextSplitter
+                    ? ParentChildTextSplitter.CHUNK_MODE : SizeTextSplitter.CHUNK_MODE;
+            String paramsSnapshot = buildParamsSnapshot(splitter);
             List<DocChunk> docChunks = new ArrayList<>();
             for (int i = 0; i < chunks.size(); i++) {
                 Document chunk = chunks.get(i);
@@ -337,12 +313,12 @@ public class RagToolService {
     // ==================== 批量处理 ====================
 
     public CompletableFuture<List<FileProcessResult>> batchProcessFiles(List<MultipartFile> files, Long kbId,
-                                                                          String chunkStrategy, Integer chunkSize, Integer chunkOverlap) {
+                                                                          String chunkStrategy, SplitterConfig splitterConfig) {
         return CompletableFuture.supplyAsync(() -> {
             List<FileProcessResult> results = new ArrayList<>();
             for (MultipartFile file : files) {
                 try {
-                    results.add(processFile(file, kbId, null, chunkStrategy, chunkSize, chunkOverlap));
+                    results.add(processFile(file, kbId, null, chunkStrategy, splitterConfig));
                 } catch (Exception e) {
                     log.error("批量处理文件失败: {}", e.getMessage());
                     results.add(FileProcessResult.builder().success(false)
@@ -369,7 +345,7 @@ public class RagToolService {
             if (f.isFile()) {
                 try {
                     MultipartFile mp = new InMemoryMultipartFile(f.getName(), Files.readAllBytes(f.toPath()), "application/octet-stream");
-                    results.add(processFile(mp, kbId, null, null, null, null));
+                    results.add(processFile(mp, kbId, null, null, null));
                 } catch (IOException e) {
                     results.add(FileProcessResult.builder().success(false).message(e.getMessage()).build());
                 }
@@ -444,40 +420,31 @@ public class RagToolService {
     // ==================== 工具方法 ====================
 
     /**
-     * 构建分片参数快照（v3：doc_chunk.params_snapshot 的 JSON 内容）。
-     * <p>依据 {@code chunkMode} 提取实际生效的分块参数：
+     * 构建分片参数快照（doc_chunk.params_snapshot 的 JSON 内容）。
+     * <p>依据 splitter 实际类型提取生效的分块参数：
      * <ul>
-     *   <li>{@code TEXT_MODEL}：从 {@link SizeTextSplitter} 提取 delimiter / maxTokens / chunkOverlap</li>
-     *   <li>{@code HIERARCHICAL_MODEL}：从 {@link ParentChildTextSplitter} 提取父子块五参数</li>
-     *   <li>其余模式：记录 chunkSize / chunkOverlap（未指定时回退默认 500 / 50）</li>
+     *   <li>{@link SizeTextSplitter}（text-model）：delimiter / maxTokens / chunkOverlap</li>
+     *   <li>{@link ParentChildTextSplitter}（hierarchical-model）：父块与子块五参数</li>
      * </ul>
-     * 序列化失败或参数为空时返回 {@code null}（JSON 列允许 NULL）。</p>
+     * 序列化失败时返回 {@code null}（JSON 列允许 NULL）。</p>
      *
-     * @param chunkMode      分片策略名（如 FIXED_SIZE / TEXT_MODEL / HIERARCHICAL_MODEL）
-     * @param chunkSize      分片大小（普通模式，可空）
-     * @param chunkOverlap   分片重叠窗口（普通模式，可空）
-     * @param customSplitter 自定义带参 splitter（text-model / hierarchical-model，可为 null）
-     * @return 参数快照 JSON 字符串，无参数或序列化失败时为 null
+     * @param splitter 实际生效的 splitter 实例（text-model / hierarchical-model）
+     * @return 参数快照 JSON 字符串，序列化失败时为 null
      */
-    private String buildParamsSnapshot(String chunkMode, Integer chunkSize, Integer chunkOverlap,
-                                       TextSplitter customSplitter) {
+    private String buildParamsSnapshot(TextSplitter splitter) {
         Map<String, Object> params = new LinkedHashMap<>();
-        if (customSplitter instanceof SizeTextSplitter s) {
-            // text_model：通用文本分块参数
+        if (splitter instanceof SizeTextSplitter s) {
+            // text-model：通用文本分块参数
             params.put("delimiter", s.getDelimiter());
             params.put("maxTokens", s.getMaxTokens());
             params.put("chunkOverlap", s.getChunkOverlap());
-        } else if (customSplitter instanceof ParentChildTextSplitter p) {
-            // hierarchical_model：层级父子分块参数
+        } else if (splitter instanceof ParentChildTextSplitter p) {
+            // hierarchical-model：层级父子分块参数
             params.put("parentSeparator", p.getParentSeparator());
             params.put("parentMaxTokens", p.getParentMaxTokens());
             params.put("childSeparator", p.getChildSeparator());
             params.put("childMaxTokens", p.getChildMaxTokens());
             params.put("parentMode", p.getParentMode());
-        } else {
-            // 其余模式（含 FIXED_SIZE 等）：固定分片大小与重叠窗口
-            params.put("chunkSize", chunkSize != null ? chunkSize : 500);
-            params.put("chunkOverlap", chunkOverlap != null ? chunkOverlap : 50);
         }
         if (params.isEmpty()) {
             return null;
@@ -485,7 +452,7 @@ public class RagToolService {
         try {
             return objectMapper.writeValueAsString(params);
         } catch (JsonProcessingException e) {
-            log.warn("分片参数快照序列化失败, chunkMode={}, error={}", chunkMode, e.getMessage());
+            log.warn("分片参数快照序列化失败, error={}", e.getMessage());
             return null;
         }
     }

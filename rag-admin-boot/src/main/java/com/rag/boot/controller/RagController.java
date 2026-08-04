@@ -4,8 +4,7 @@ import com.rag.auth.context.RequestContext;
 import com.rag.auth.service.KbAccessService;
 import com.rag.boot.service.FileProcessResult;
 import com.rag.boot.service.RagToolService;
-import com.rag.chunker.ParentChildTextSplitter;
-import com.rag.chunker.SizeTextSplitter;
+import com.rag.chunker.SplitterConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -37,19 +36,20 @@ public class RagController {
     // ==================== 文件上传 ====================
 
     /**
-     * 单文件上传入库（file + kbId，可选文档级分片策略，未指定默认 FIXED_SIZE）
+     * 单文件上传入库（默认兜底接口）。
+     * <p>file + kbId，可选 chunkStrategy（text-model / hierarchical-model）。未指定或为 null 时
+     * 回退 text-model，并使用默认参数分块。</p>
      */
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadFile(
             @RequestPart("file") MultipartFile file,
             @RequestParam("kbId") Long kbId,
-            @RequestParam(value = "chunkStrategy", required = false) String chunkStrategy,
-            @RequestParam(value = "chunkSize", required = false) Integer chunkSize,
-            @RequestParam(value = "chunkOverlap", required = false) Integer chunkOverlap) {
+            @RequestParam(value = "chunkStrategy", required = false) String chunkStrategy) {
         try {
             Long userId = requireAuth();
             kbAccessService.checkUploadPermission(userId, kbId);
-            FileProcessResult result = ragToolService.processFile(file, kbId, null, chunkStrategy, chunkSize, chunkOverlap);
+            // 默认兜底：config 传 null，工厂按 chunkStrategy 采用默认参数构造 splitter
+            FileProcessResult result = ragToolService.processFile(file, kbId, null, chunkStrategy, null);
             return ResponseEntity.ok(Map.of("code", 200, "data", result));
         } catch (Exception e) {
             log.error("文件上传处理失败", e);
@@ -58,9 +58,10 @@ public class RagController {
     }
 
     /**
-     * text_model 上传文件落库 API。
-     * <p>上传文件 + kbId，按 {@link SizeTextSplitter} 参数分块后落库（解析→分块→向量化→入库）。
-     * splitter 参数（delimiter / maxTokens / chunkOverlap）作为接口参数传入，未传入时使用默认值。</p>
+     * text-model 上传文件落库 API（支持细粒度传参）。
+     * <p>上传文件 + kbId，按 text-model 策略分块落库（解析→分块→向量化→入库）。
+     * 通过 {@link SplitterConfig} 按用户传入的 delimiter / maxTokens / chunkOverlap 构造参数，
+     * 未传入的字段采用默认值。</p>
      */
     @PostMapping(value = "/upload/text-model", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadTextModel(
@@ -72,13 +73,13 @@ public class RagController {
         try {
             Long userId = requireAuth();
             kbAccessService.checkUploadPermission(userId, kbId);
-            // 未传入参数时采用默认值构造带参 splitter
-            String sep = delimiter != null ? delimiter : "\n";
-            int maxTk = maxTokens != null ? maxTokens : 1024;
-            int overlap = chunkOverlap != null ? chunkOverlap : 50;
-            SizeTextSplitter splitter = new SizeTextSplitter(sep, maxTk, overlap);
-            FileProcessResult result = ragToolService.processFileWithSplitter(
-                    file, kbId, null, "TEXT_MODEL", splitter);
+            // 按用户传参构造 SplitterConfig（未传入的字段为 null，由 splitter 采用默认值）
+            SplitterConfig config = new SplitterConfig();
+            config.setDelimiter(delimiter);
+            config.setMaxTokens(maxTokens);
+            config.setChunkOverlap(chunkOverlap);
+            FileProcessResult result = ragToolService.processFile(
+                    file, kbId, null, "TEXT_MODEL", config);
             return ResponseEntity.ok(Map.of("code", 200, "data", result));
         } catch (Exception e) {
             log.error("text-model 上传落库失败", e);
@@ -87,10 +88,10 @@ public class RagController {
     }
 
     /**
-     * hierarchical_model 上传文件落库 API。
-     * <p>上传文件 + kbId，按 {@link ParentChildTextSplitter} 参数分块后落库（解析→父块+子块→向量化→入库）。
-     * splitter 参数（parentSeparator / parentMaxTokens / childSeparator / childMaxTokens / parentMode）
-     * 作为接口参数传入，未传入时使用默认值。</p>
+     * hierarchical-model 上传文件落库 API（支持细粒度传参）。
+     * <p>上传文件 + kbId，按 hierarchical-model 策略分块落库（解析→父块+子块→向量化→入库）。
+     * 通过 {@link SplitterConfig} 按用户传入的 parentSeparator / parentMaxTokens / childSeparator /
+     * childMaxTokens / parentMode 构造参数，未传入的字段采用默认值。</p>
      */
     @PostMapping(value = "/upload/hierarchical-model", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadHierarchicalModel(
@@ -104,16 +105,15 @@ public class RagController {
         try {
             Long userId = requireAuth();
             kbAccessService.checkUploadPermission(userId, kbId);
-            // 未传入参数时采用默认值构造带参 splitter
-            String pSep = parentSeparator != null ? parentSeparator : "\n\n\n";
-            int pMaxTk = parentMaxTokens != null ? parentMaxTokens : 2048;
-            String cSep = childSeparator != null ? childSeparator : "\n\n";
-            int cMaxTk = childMaxTokens != null ? childMaxTokens : 1024;
-            String pMode = parentMode != null ? parentMode : "paragraph";
-            ParentChildTextSplitter splitter = new ParentChildTextSplitter(
-                    pSep, pMaxTk, cSep, cMaxTk, pMode);
-            FileProcessResult result = ragToolService.processFileWithSplitter(
-                    file, kbId, null, "HIERARCHICAL_MODEL", splitter);
+            // 按用户传参构造 SplitterConfig（未传入的字段为 null，由 splitter 采用默认值）
+            SplitterConfig config = new SplitterConfig();
+            config.setParentSeparator(parentSeparator);
+            config.setParentMaxTokens(parentMaxTokens);
+            config.setChildSeparator(childSeparator);
+            config.setChildMaxTokens(childMaxTokens);
+            config.setParentMode(parentMode);
+            FileProcessResult result = ragToolService.processFile(
+                    file, kbId, null, "HIERARCHICAL_MODEL", config);
             return ResponseEntity.ok(Map.of("code", 200, "data", result));
         } catch (Exception e) {
             log.error("hierarchical-model 上传落库失败", e);
@@ -122,7 +122,8 @@ public class RagController {
     }
 
     /**
-     * 批量文件上传（仅需 files + kbId）
+     * 批量文件上传（files + kbId，可指定分片策略与参数）。
+     * <p>未指定 chunkStrategy 时由 Service 回退 text-model 默认参数；参数未传入时由 splitter 采用默认值。</p>
      */
     @PostMapping(value = "/upload/batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadBatch(
@@ -135,17 +136,36 @@ public class RagController {
                 return ResponseEntity.badRequest().body(Map.of("code", 400, "msg", "缺少 kbId"));
             }
             kbAccessService.checkUploadPermission(userId, kbId);
-            // 透传文档级分片策略（request 可空，未指定则默认 FIXED_SIZE）
+            // 依据 request 中用户传参构造 SplitterConfig（未传入字段为 null，由 splitter 采用默认值）
             String chunkStrategy = request != null ? request.getChunkStrategy() : null;
-            Integer chunkSize = request != null ? request.getChunkSize() : null;
-            Integer chunkOverlap = request != null ? request.getChunkOverlap() : null;
+            SplitterConfig config = buildSplitterConfig(request);
             CompletableFuture<List<FileProcessResult>> future =
-                    ragToolService.batchProcessFiles(files, kbId, chunkStrategy, chunkSize, chunkOverlap);
+                    ragToolService.batchProcessFiles(files, kbId, chunkStrategy, config);
             return ResponseEntity.ok(Map.of("code", 200, "msg", "批量任务已提交"));
         } catch (Exception e) {
             log.error("批量上传处理失败", e);
             return ResponseEntity.badRequest().body(Map.of("code", 500, "msg", e.getMessage()));
         }
+    }
+
+    /**
+     * 依据 {@link BatchUploadRequest} 中用户传参构造 {@link SplitterConfig}。
+     * request 为 null 时返回 null（Service 采用默认参数）。
+     */
+    private SplitterConfig buildSplitterConfig(BatchUploadRequest request) {
+        if (request == null) {
+            return null;
+        }
+        SplitterConfig config = new SplitterConfig();
+        config.setDelimiter(request.getDelimiter());
+        config.setMaxTokens(request.getMaxTokens());
+        config.setChunkOverlap(request.getChunkOverlap());
+        config.setParentSeparator(request.getParentSeparator());
+        config.setParentMaxTokens(request.getParentMaxTokens());
+        config.setChildSeparator(request.getChildSeparator());
+        config.setChildMaxTokens(request.getChildMaxTokens());
+        config.setParentMode(request.getParentMode());
+        return config;
     }
 
     /**

@@ -4,12 +4,8 @@ import com.rag.auth.jwt.JwtTokenProvider;
 import com.rag.auth.mapper.*;
 import com.rag.auth.service.*;
 import com.rag.boot.interceptor.JwtAuthInterceptor;
-import com.rag.chunker.ChunkerFactory;
-import com.rag.chunker.ParentChildTextSplitter;
-import com.rag.chunker.SizeTextSplitter;
-import com.rag.chunker.impl.*;
+import com.rag.chunker.ChunkStrategyFactory;
 import com.rag.core.config.EmbeddingProperties;
-import com.rag.core.enums.ChunkStrategyEnum;
 import com.rag.core.factory.EmbeddingModelFactory;
 import com.rag.core.factory.VectorStoreRegistry;
 import com.rag.parser.DocumentParseFactory;
@@ -17,7 +13,6 @@ import com.rag.parser.impl.*;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.ai.document.DocumentReader;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
-import org.springframework.ai.transformer.splitter.TextSplitter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -117,21 +112,14 @@ public class RagCoreConfig implements WebMvcConfigurer {
         return new DocumentParseFactory(suppliers);
     }
 
-    // ==================== 分片器配置 ====================
+    // ==================== 分片策略工厂配置 ====================
 
+    /**
+     * 封装式分片策略工厂：依据 chunkStrategy + SplitterConfig 判定并构造对应 splitter。
+     */
     @Bean
-    public ChunkerFactory chunkerFactory() {
-        Map<ChunkStrategyEnum, TextSplitter> chunkerMap = new EnumMap<>(ChunkStrategyEnum.class);
-        chunkerMap.put(ChunkStrategyEnum.SEMANTIC, new SemanticChunker());
-        chunkerMap.put(ChunkStrategyEnum.TABLE, new TableChunker());
-        chunkerMap.put(ChunkStrategyEnum.CODE_FUNCTION, new CodeFunctionChunker());
-        chunkerMap.put(ChunkStrategyEnum.TITLE_HIERARCHY, new TitleHierarchyChunker());
-        chunkerMap.put(ChunkStrategyEnum.PARENT_CHILD, new ParentChildChunker());
-        // 通用文本分块（text_model）与层级父子分块（hierarchical_model）使用默认参数
-        chunkerMap.put(ChunkStrategyEnum.TEXT_MODEL, new SizeTextSplitter());
-        chunkerMap.put(ChunkStrategyEnum.HIERARCHICAL_MODEL, new ParentChildTextSplitter());
-        // FIXED_SIZE 由框架 RecursiveCharacterTextSplitter 在 ChunkerFactory 内处理
-        return new ChunkerFactory(chunkerMap);
+    public ChunkStrategyFactory chunkStrategyFactory() {
+        return new ChunkStrategyFactory();
     }
 
     // ==================== Embedding / 向量库（Spring AI） ====================

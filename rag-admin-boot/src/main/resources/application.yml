@@ -102,26 +102,6 @@ rag:
     auto-clean-enabled: false
     auto-clean-cron: "0 0 2 * * ?"
 
-  # ---------- 默认分片配置 ----------
-  chunk:
-    default:
-      # 固定分片大小（字符数）
-      fixed-size: 500
-      # 滑动重叠窗口
-      slide-overlap: 50
-      # 语义相似度阈值 (0-1)
-      semantic-threshold: 0.7
-      # 表格是否独立分片
-      split-table: true
-      # 代码是否按函数拆分
-      split-code: true
-      # 最大标题层级
-      max-title-level: 3
-      # 父子分片-父块长度
-      parent-chunk-len: 1000
-      # 父子分片-子块长度
-      child-chunk-len: 200
-
   # ---------- MinIO文件存储配置（可选） ----------
   minio:
     # 是否启用MinIO（true/false），默认使用本地文件系统

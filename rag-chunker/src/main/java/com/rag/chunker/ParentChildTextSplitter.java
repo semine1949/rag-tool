@@ -2,6 +2,7 @@ package com.rag.chunker;
 
 import com.rag.chunker.util.ChunkDocuments;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.transformer.splitter.TextSplitter;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -42,7 +43,7 @@ import java.util.UUID;
  * 返回列表同时包含父块与子块，调用方可通过 {@code chunkType} 区分：
  * 子块用于向量化检索，父块用于上下文增强。
  */
-public class ParentChildTextSplitter extends ConfigurableTextSplitter {
+public class ParentChildTextSplitter extends TextSplitter {
 
     /** 分块模式标识：层级父子分块策略 */
     public static final String CHUNK_MODE = "hierarchical_model";
@@ -100,6 +101,15 @@ public class ParentChildTextSplitter extends ConfigurableTextSplitter {
 
     /** 父块粒度模式 */
     public String getParentMode() { return parentMode; }
+
+    /**
+     * 满足 {@link TextSplitter} 抽象方法要求：原样返回。
+     * <p>主逻辑在 {@link #apply(List)} 中完成，此方法不会被框架默认调用路径走到。</p>
+     */
+    @Override
+    protected List<String> splitText(String text) {
+        return List.of(text);
+    }
 
     /**
      * 切分主逻辑：先生成父块，再将每个父块细分为子块。
