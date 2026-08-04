@@ -41,6 +41,8 @@
         <jackson.version>2.15.3</jackson.version>
         <lombok.version>1.18.30</lombok.version>
         <minio.version>8.5.7</minio.version>
+        <!-- 锁定 commons-compress 版本，解决 Tika/POI 冲突导致的 NoSuchMethodError -->
+        <commons-compress.version>1.26.0</commons-compress.version>
     </properties>
 
     <dependencyManagement>
@@ -154,6 +156,13 @@
                 <groupId>com.mysql</groupId>
                 <artifactId>mysql-connector-j</artifactId>
                 <version>8.2.0</version>
+            </dependency>
+
+            <!-- Commons Compress：显式锁定版本，避免 Tika/POI 传递依赖冲突 -->
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-compress</artifactId>
+                <version>${commons-compress.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
