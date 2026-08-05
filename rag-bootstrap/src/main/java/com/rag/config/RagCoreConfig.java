@@ -1,9 +1,9 @@
-package com.rag.boot.config;
+package com.rag.config;
 
 import com.rag.auth.jwt.JwtTokenProvider;
 import com.rag.auth.mapper.*;
 import com.rag.auth.service.*;
-import com.rag.boot.interceptor.JwtAuthInterceptor;
+import com.rag.interceptor.JwtAuthInterceptor;
 import com.rag.chunker.ChunkStrategyFactory;
 import com.rag.core.config.EmbeddingProperties;
 import com.rag.core.factory.EmbeddingModelFactory;

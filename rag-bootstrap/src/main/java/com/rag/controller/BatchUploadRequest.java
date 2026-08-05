@@ -1,4 +1,4 @@
-package com.rag.boot.controller;
+package com.rag.controller;
 
 /**
  * 批量上传请求 DTO（Multi-Tenant v2）。

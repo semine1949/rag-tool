@@ -1,9 +1,9 @@
-package com.rag.boot.controller;
+package com.rag.controller;
 
 import com.rag.auth.context.RequestContext;
 import com.rag.auth.service.KbAccessService;
-import com.rag.boot.service.FileProcessResult;
-import com.rag.boot.service.RagToolService;
+import com.rag.service.FileProcessResult;
+import com.rag.service.RagToolService;
 import com.rag.chunker.SplitterConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

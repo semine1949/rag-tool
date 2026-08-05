@@ -1,4 +1,4 @@
-package com.rag.boot.controller;
+package com.rag.controller;
 
 /**
  * 目录处理请求 DTO（Multi-Tenant v2）

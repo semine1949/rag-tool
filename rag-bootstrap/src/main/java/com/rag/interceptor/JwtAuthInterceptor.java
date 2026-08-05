@@ -1,4 +1,4 @@
-package com.rag.boot.interceptor;
+package com.rag.interceptor;
 
 import com.rag.auth.context.RequestContext;
 import com.rag.auth.jwt.JwtTokenProvider;

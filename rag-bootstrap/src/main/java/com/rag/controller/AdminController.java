@@ -1,4 +1,4 @@
-package com.rag.boot.controller;
+package com.rag.controller;
 
 import com.rag.auth.context.RequestContext;
 import com.rag.auth.mapper.*;

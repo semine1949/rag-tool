@@ -1,4 +1,4 @@
-package com.rag.boot.controller;
+package com.rag.controller;
 
 import com.rag.core.api.AuthService;
 import com.rag.core.entity.AuthUser;

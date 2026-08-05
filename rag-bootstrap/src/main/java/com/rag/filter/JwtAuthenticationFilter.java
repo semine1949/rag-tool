@@ -1,4 +1,4 @@
-package com.rag.boot.filter;
+package com.rag.filter;
 
 import com.rag.auth.context.RequestContext;
 import com.rag.auth.jwt.JwtTokenProvider;

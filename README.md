@@ -133,14 +133,14 @@ flowchart LR
 git clone https://github.com/your-org/rag-tool.git && cd rag-tool
 
 # 2. 初始化数据库（执行建表脚本）
-mysql -u root -p < rag-admin-boot/src/main/resources/sql/schema-v2.sql
+mysql -u root -p < rag-bootstrap/src/main/resources/sql/schema-v2.sql
 
 # 3. 修改配置（根据实际环境填写）
-vim rag-admin-boot/src/main/resources/application.yml
+vim rag-bootstrap/src/main/resources/application.yml
 # 需要修改：MySQL 连接信息、Weaviate URL、Embedding 模型 API Key
 
 # 4. 编译启动
-./mvnw -pl rag-admin-boot spring-boot:run
+./mvnw -pl rag-bootstrap spring-boot:run
 ```
 
 ### REST API 调用

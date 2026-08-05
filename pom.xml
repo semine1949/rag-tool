@@ -13,10 +13,8 @@
 
     <modules>
         <module>rag-core</module>
-        <module>rag-parser</module>
-        <module>rag-chunker</module>
         <module>rag-auth</module>
-        <module>rag-admin-boot</module>
+        <module>rag-bootstrap</module>
     </modules>
 
     <properties>
@@ -69,16 +67,6 @@
             <dependency>
                 <groupId>com.rag</groupId>
                 <artifactId>rag-core</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.rag</groupId>
-                <artifactId>rag-parser</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.rag</groupId>
-                <artifactId>rag-chunker</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -1,6 +1,6 @@
-package com.rag.boot.config;
+package com.rag.config;
 
-import com.rag.boot.filter.JwtAuthenticationFilter;
+import com.rag.filter.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;

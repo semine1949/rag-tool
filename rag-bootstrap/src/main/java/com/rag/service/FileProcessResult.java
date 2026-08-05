@@ -1,4 +1,4 @@
-package com.rag.boot.service;
+package com.rag.service;
 
 import lombok.Builder;
 import lombok.Data;

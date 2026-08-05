@@ -1,4 +1,4 @@
-package com.rag.boot.service;
+package com.rag.service;
 
 import com.rag.auth.context.RequestContext;
 import com.rag.auth.mapper.DocChunkMapper;
