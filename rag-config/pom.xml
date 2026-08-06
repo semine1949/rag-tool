@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.rag</groupId>
+        <artifactId>rag-vector-tool</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>rag-config</artifactId>
+    <name>rag-config</name>
+    <description>装配与实现层：具体厂商适配器、模型工厂、向量库注册表、配置驱动实例化</description>
+
+    <dependencies>
+        <!-- 依赖 rag-common 抽象层 -->
+        <dependency>
+            <groupId>com.rag</groupId>
+            <artifactId>rag-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Weaviate 直连客户端（多租户物理隔离集合） -->
+        <dependency>
+            <groupId>io.weaviate</groupId>
+            <artifactId>client</artifactId>
+            <version>4.6.0</version>
+        </dependency>
+        <!-- OpenAI 兼容 Embedding HTTP 调用 -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+        </dependency>
+        <!-- Jackson JSON 序列化 -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,8 +1,8 @@
 package com.rag.auth.service;
 
 import com.rag.auth.mapper.DocumentVersionMapper;
-import com.rag.core.api.DocumentVersionService;
-import com.rag.core.entity.DocumentVersion;
+import com.rag.common.api.DocumentVersionService;
+import com.rag.common.entity.DocumentVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

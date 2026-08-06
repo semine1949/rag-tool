@@ -1,6 +1,6 @@
 package com.rag.auth.mapper;
 
-import com.rag.core.entity.KbDocument;
+import com.rag.common.entity.KbDocument;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 

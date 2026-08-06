@@ -3,7 +3,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.rag.auth.mapper.TenantMapper">
 
-    <resultMap id="TenantResultMap" type="com.rag.core.entity.Tenant">
+    <resultMap id="TenantResultMap" type="com.rag.common.entity.Tenant">
         <id property="tenantId" column="tenant_id"/>
         <result property="tenantName" column="tenant_name"/>
         <result property="defaultEmbeddingModel" column="default_embedding_model"/>

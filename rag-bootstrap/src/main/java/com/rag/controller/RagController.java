@@ -4,7 +4,7 @@ import com.rag.auth.context.RequestContext;
 import com.rag.auth.service.KbAccessService;
 import com.rag.service.FileProcessResult;
 import com.rag.service.RagToolService;
-import com.rag.chunker.SplitterConfig;
+import com.rag.common.chunker.SplitterConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -226,7 +226,7 @@ public class RagController {
     private Long requireAuth() {
         Long userId = RequestContext.currentUserId();
         if (userId == null) {
-            throw new com.rag.core.exception.RagException("AUTH_REQUIRED", "请先登录或提供 API-Key");
+            throw new com.rag.common.exception.RagException("AUTH_REQUIRED", "请先登录或提供 API-Key");
         }
         return userId;
     }

@@ -3,7 +3,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.rag.auth.mapper.DocChunkMapper">
 
-    <resultMap id="DocChunkResultMap" type="com.rag.core.entity.DocChunk">
+    <resultMap id="DocChunkResultMap" type="com.rag.common.entity.DocChunk">
         <id property="chunkId" column="chunk_id"/>
         <result property="docId" column="doc_id"/>
         <result property="tenantId" column="tenant_id"/>

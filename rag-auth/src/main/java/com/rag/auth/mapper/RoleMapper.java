@@ -1,6 +1,6 @@
 package com.rag.auth.mapper;
 
-import com.rag.core.entity.Role;
+import com.rag.common.entity.Role;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 

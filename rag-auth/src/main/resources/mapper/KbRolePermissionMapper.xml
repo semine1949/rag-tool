@@ -3,7 +3,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.rag.auth.mapper.KbRolePermissionMapper">
 
-    <resultMap id="KbRolePermissionResultMap" type="com.rag.core.entity.KbRolePermission">
+    <resultMap id="KbRolePermissionResultMap" type="com.rag.common.entity.KbRolePermission">
         <id property="id" column="id"/>
         <result property="kbId" column="kb_id"/>
         <result property="roleId" column="role_id"/>

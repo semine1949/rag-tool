@@ -3,7 +3,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.rag.auth.mapper.KnowledgeBaseMapper">
 
-    <resultMap id="KnowledgeBaseResultMap" type="com.rag.core.entity.KnowledgeBase">
+    <resultMap id="KnowledgeBaseResultMap" type="com.rag.common.entity.KnowledgeBase">
         <id property="kbId" column="kb_id"/>
         <result property="tenantId" column="tenant_id"/>
         <result property="kbName" column="kb_name"/>

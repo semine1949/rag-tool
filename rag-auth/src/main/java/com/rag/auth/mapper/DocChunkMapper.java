@@ -1,6 +1,6 @@
 package com.rag.auth.mapper;
 
-import com.rag.core.entity.DocChunk;
+import com.rag.common.entity.DocChunk;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 

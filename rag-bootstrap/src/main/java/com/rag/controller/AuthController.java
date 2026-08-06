@@ -1,7 +1,7 @@
 package com.rag.controller;
 
-import com.rag.core.api.AuthService;
-import com.rag.core.entity.AuthUser;
+import com.rag.common.api.AuthService;
+import com.rag.common.entity.AuthUser;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 

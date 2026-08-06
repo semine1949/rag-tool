@@ -24,7 +24,7 @@ spring:
 # ==================== MyBatis 配置 ====================
 mybatis:
   mapper-locations: classpath*:mapper/**/*.xml
-  type-aliases-package: com.rag.core.entity
+  type-aliases-package: com.rag.common.entity
   type-handlers-package: com.rag.auth.typehandler
   configuration:
     map-underscore-to-camel-case: true

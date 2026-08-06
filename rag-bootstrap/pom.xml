@@ -17,7 +17,13 @@
         <!-- ===== 内部模块 ===== -->
         <dependency>
             <groupId>com.rag</groupId>
-            <artifactId>rag-core</artifactId>
+            <artifactId>rag-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.rag</groupId>
+            <artifactId>rag-config</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.rag</groupId>

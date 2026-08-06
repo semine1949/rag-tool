@@ -3,7 +3,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.rag.auth.mapper.KbDocumentMapper">
 
-    <resultMap id="KbDocumentResultMap" type="com.rag.core.entity.KbDocument">
+    <resultMap id="KbDocumentResultMap" type="com.rag.common.entity.KbDocument">
         <id property="docId" column="doc_id"/>
         <result property="kbId" column="kb_id"/>
         <result property="tenantId" column="tenant_id"/>

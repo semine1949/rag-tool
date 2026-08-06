@@ -5,11 +5,11 @@ import com.rag.auth.mapper.KbRolePermissionMapper;
 import com.rag.auth.mapper.KnowledgeBaseMapper;
 import com.rag.auth.mapper.RoleMapper;
 import com.rag.auth.mapper.UserTenantRoleMapper;
-import com.rag.core.entity.KbRolePermission;
-import com.rag.core.entity.KnowledgeBase;
-import com.rag.core.entity.Role;
-import com.rag.core.entity.UserTenantRole;
-import com.rag.core.exception.RagException;
+import com.rag.common.entity.KbRolePermission;
+import com.rag.common.entity.KnowledgeBase;
+import com.rag.common.entity.Role;
+import com.rag.common.entity.UserTenantRole;
+import com.rag.common.exception.RagException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

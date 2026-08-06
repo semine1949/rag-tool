@@ -3,7 +3,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.rag.auth.mapper.DocumentVersionMapper">
 
-    <resultMap id="DocumentVersionResultMap" type="com.rag.core.entity.DocumentVersion">
+    <resultMap id="DocumentVersionResultMap" type="com.rag.common.entity.DocumentVersion">
         <id property="id" column="id"/>
         <result property="docId" column="doc_id"/>
         <result property="tenantId" column="tenant_id"/>

@@ -3,7 +3,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.rag.auth.mapper.RoleMapper">
 
-    <resultMap id="RoleResultMap" type="com.rag.core.entity.Role">
+    <resultMap id="RoleResultMap" type="com.rag.common.entity.Role">
         <id property="roleId" column="role_id"/>
         <result property="roleCode" column="role_code"/>
         <result property="roleName" column="role_name"/>

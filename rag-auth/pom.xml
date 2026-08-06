@@ -16,7 +16,8 @@
     <dependencies>
         <dependency>
             <groupId>com.rag</groupId>
-            <artifactId>rag-core</artifactId>
+            <artifactId>rag-config</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <!-- JWT -->
         <dependency>

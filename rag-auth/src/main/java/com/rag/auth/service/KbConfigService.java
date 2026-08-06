@@ -1,12 +1,12 @@
 package com.rag.auth.service;
 
 import com.rag.auth.mapper.KnowledgeBaseMapper;
-import com.rag.core.config.EmbeddingConfig;
-import com.rag.core.config.EmbeddingProperties;
-import com.rag.core.config.WeaviateCollectionConfig;
-import com.rag.core.entity.KnowledgeBase;
-import com.rag.core.enums.EmbeddingModelType;
-import com.rag.core.factory.VectorStoreRegistry;
+import com.rag.common.config.EmbeddingConfig;
+import com.rag.common.config.EmbeddingProperties;
+import com.rag.common.config.WeaviateCollectionConfig;
+import com.rag.common.entity.KnowledgeBase;
+import com.rag.common.enums.EmbeddingModelType;
+import com.rag.config.factory.VectorStoreRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -52,7 +52,7 @@ public class KbConfigService {
     public KnowledgeBase getKb(Long kbId) {
         KnowledgeBase kb = kbMapper.findById(kbId);
         if (kb == null) {
-            throw new com.rag.core.exception.RagException("RAG_KB_NOT_FOUND", "知识库不存在: " + kbId);
+            throw new com.rag.common.exception.RagException("RAG_KB_NOT_FOUND", "知识库不存在: " + kbId);
         }
         return kb;
     }

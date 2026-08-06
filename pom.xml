@@ -12,7 +12,8 @@
     <description>通用多源文档向量化入库工具 - 父工程</description>
 
     <modules>
-        <module>rag-core</module>
+        <module>rag-common</module>
+        <module>rag-config</module>
         <module>rag-auth</module>
         <module>rag-bootstrap</module>
     </modules>
@@ -66,7 +67,12 @@
             <!-- 内部模块 -->
             <dependency>
                 <groupId>com.rag</groupId>
-                <artifactId>rag-core</artifactId>
+                <artifactId>rag-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.rag</groupId>
+                <artifactId>rag-config</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -4,12 +4,12 @@ import com.rag.auth.jwt.JwtTokenProvider;
 import com.rag.auth.mapper.*;
 import com.rag.auth.service.*;
 import com.rag.interceptor.JwtAuthInterceptor;
-import com.rag.chunker.ChunkStrategyFactory;
-import com.rag.core.config.EmbeddingProperties;
-import com.rag.core.factory.EmbeddingModelFactory;
-import com.rag.core.factory.VectorStoreRegistry;
-import com.rag.parser.DocumentParseFactory;
-import com.rag.parser.impl.*;
+import com.rag.common.chunker.ChunkStrategyFactory;
+import com.rag.common.config.EmbeddingProperties;
+import com.rag.config.factory.EmbeddingModelFactory;
+import com.rag.config.factory.VectorStoreRegistry;
+import com.rag.common.parser.DocumentParseFactory;
+import com.rag.common.parser.impl.*;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.ai.document.DocumentReader;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
@@ -73,8 +73,8 @@ public class RagCoreConfig implements WebMvcConfigurer {
 
     @Bean
     public DocumentParseFactory documentParseFactory(DeepSeekOcrClient deepSeekOcrClient) {
-        Map<com.rag.core.enums.FileTypeEnum, Function<File, DocumentReader>> suppliers =
-                new EnumMap<>(com.rag.core.enums.FileTypeEnum.class);
+        Map<com.rag.common.enums.FileTypeEnum, Function<File, DocumentReader>> suppliers =
+                new EnumMap<>(com.rag.common.enums.FileTypeEnum.class);
 
         // 策略1：文本类型 → Apache Tika
         Function<File, DocumentReader> tikaReader = f -> new TikaDocumentReader(new FileSystemResource(f));
@@ -86,28 +86,28 @@ public class RagCoreConfig implements WebMvcConfigurer {
         Function<File, DocumentReader> excelReader = f -> new ExcelParser(f);
 
         // 文本类型：TXT / MD / MARKDOWN / HTML / HTM
-        suppliers.put(com.rag.core.enums.FileTypeEnum.TXT, tikaReader);
-        suppliers.put(com.rag.core.enums.FileTypeEnum.MD, tikaReader);
-        suppliers.put(com.rag.core.enums.FileTypeEnum.MARKDOWN, tikaReader);
-        suppliers.put(com.rag.core.enums.FileTypeEnum.HTML, tikaReader);
-        suppliers.put(com.rag.core.enums.FileTypeEnum.HTM, tikaReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.TXT, tikaReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.MD, tikaReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.MARKDOWN, tikaReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.HTML, tikaReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.HTM, tikaReader);
 
         // 混合文档：PDF / DOC / DOCX / PPT / PPTX
-        suppliers.put(com.rag.core.enums.FileTypeEnum.PDF, mixedReader);
-        suppliers.put(com.rag.core.enums.FileTypeEnum.DOC, mixedReader);
-        suppliers.put(com.rag.core.enums.FileTypeEnum.DOCX, mixedReader);
-        suppliers.put(com.rag.core.enums.FileTypeEnum.PPT, mixedReader);
-        suppliers.put(com.rag.core.enums.FileTypeEnum.PPTX, mixedReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.PDF, mixedReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.DOC, mixedReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.DOCX, mixedReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.PPT, mixedReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.PPTX, mixedReader);
 
         // 纯图片：JPG / JPEG / PNG / BMP
-        suppliers.put(com.rag.core.enums.FileTypeEnum.JPG, ocrReader);
-        suppliers.put(com.rag.core.enums.FileTypeEnum.JPEG, ocrReader);
-        suppliers.put(com.rag.core.enums.FileTypeEnum.PNG, ocrReader);
-        suppliers.put(com.rag.core.enums.FileTypeEnum.BMP, ocrReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.JPG, ocrReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.JPEG, ocrReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.PNG, ocrReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.BMP, ocrReader);
 
         // Excel：XLS / XLSX
-        suppliers.put(com.rag.core.enums.FileTypeEnum.XLSX, excelReader);
-        suppliers.put(com.rag.core.enums.FileTypeEnum.XLS, excelReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.XLSX, excelReader);
+        suppliers.put(com.rag.common.enums.FileTypeEnum.XLS, excelReader);
 
         return new DocumentParseFactory(suppliers);
     }
