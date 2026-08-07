@@ -83,6 +83,27 @@ rag:
     token: ${RAG_WEAVIATE_TOKEN:}
     collection: Document_V1
 
+  # ---------- 检索配置（多路召回默认参数） ----------
+  search:
+    # 默认检索模式: VECTOR_ONLY / BM25_ONLY / HYBRID
+    default-mode: VECTOR_ONLY
+    # ===== BM25 默认参数（Weaviate 服务端内部管理，此处预留） =====
+    bm25:
+      # k1 参数（默认 1.2），控制词频饱和度
+      k1: 1.2
+      # b 参数（默认 0.75），控制文档长度归一化
+      b: 0.75
+    # ===== RRF 融合默认参数 =====
+    rrf:
+      # RRF 常数 k（默认 60），值越大排名越平滑
+      k: 60
+    # ===== 加权求和默认参数 =====
+    weighted:
+      # 向量检索默认权重
+      vector-weight: 0.5
+      # BM25 检索默认权重
+      bm25-weight: 0.5
+
   # ---------- 鉴权与安全配置（需求6-7） ----------
   auth:
     jwt:

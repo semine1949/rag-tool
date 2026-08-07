@@ -2,12 +2,15 @@ package com.rag.config.vectorstore;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rag.common.entity.config.SearchConfig;
+import com.rag.common.enums.SearchMode;
 import io.weaviate.client.Config;
 import io.weaviate.client.WeaviateClient;
 import io.weaviate.client.base.Result;
 import io.weaviate.client.v1.filters.WhereFilter;
 import io.weaviate.client.v1.graphql.model.GraphQLResponse;
 import io.weaviate.client.v1.graphql.query.Get;
+import io.weaviate.client.v1.graphql.query.argument.Bm25Argument;
 import io.weaviate.client.v1.graphql.query.argument.NearVectorArgument;
 import io.weaviate.client.v1.graphql.query.argument.WhereArgument;
 import io.weaviate.client.v1.graphql.query.fields.Field;
@@ -196,25 +199,7 @@ public class WeaviateVectorStoreAdapter implements VectorStore {
         }
 
         int limit = request.getTopK() <= 0 ? 5 : request.getTopK();
-        Field[] fields = new Field[]{
-                Field.builder().name("text").build(),
-                Field.builder().name("fileName").build(),
-                Field.builder().name("fileType").build(),
-                Field.builder().name("chunkType").build(),
-                Field.builder().name("fileId").build(),
-                Field.builder().name("textHash").build(),
-                Field.builder().name("recordId").build(),
-                Field.builder().name("documentId").build(),
-                Field.builder().name("documentVersion").build(),
-                Field.builder().name("tenantId").build(),
-                Field.builder().name("kbId").build(),
-                Field.builder().name("metadata").build(),
-                Field.builder().name("_additional")
-                        .fields(Field.builder().name("id").build(),
-                                Field.builder().name("certainty").build(),
-                                Field.builder().name("distance").build())
-                        .build()
-        };
+        Field[] fields = buildSearchFields();
 
         Get get = client.graphQL().get()
                 .withClassName(className)
@@ -235,7 +220,209 @@ public class WeaviateVectorStoreAdapter implements VectorStore {
         return parseSearchResult(result.getResult());
     }
 
+    // ==================== BM25 关键词检索 ====================
+
+    /**
+     * BM25 关键词检索，基于 Weaviate 原生 {@code bm25} 查询算子。
+     * <p>
+     * 使用 Weaviate client 4.6.0 的 {@link Bm25Argument} 构造 BM25 查询，
+     * 对 {@code text} 字段进行关键词匹配，返回按 BM25 相关性得分排序的结果。
+     * 元数据过滤、返回字段结构与向量检索完全对齐。
+     * </p>
+     *
+     * @param query        检索关键词（空或 null 时返回空列表）
+     * @param topK         返回条数（≤0 时回退默认值 5）
+     * @param filterExpr   可选元数据过滤表达式（如按 fileId 过滤），null 表示不过滤
+     * @return BM25 检索结果列表
+     */
+    public List<Document> bm25Search(String query, int topK, Filter.Expression filterExpr) {
+        initCollection();
+        if (query == null || query.isBlank()) {
+            log.debug("BM25 检索查询为空，返回空列表");
+            return List.of();
+        }
+        int limit = topK <= 0 ? 5 : topK;
+
+        // 构建返回字段（与向量检索完全一致）
+        Field[] fields = buildSearchFields();
+
+        // 构建 BM25 查询：对 text 属性进行关键词匹配
+        Bm25Argument bm25Arg = Bm25Argument.builder()
+                .query(query)
+                .properties(new String[]{"text"})
+                .build();
+
+        // 构建 GraphQL Get 查询
+        Get get = client.graphQL().get()
+                .withClassName(className)
+                .withFields(fields)
+                .withBm25(bm25Arg)
+                .withLimit(limit);
+
+        // 元数据过滤（复用现有的 toWhere 转换逻辑）
+        if (filterExpr != null) {
+            get = get.withWhere(WhereArgument.builder()
+                    .filter(toWhere(filterExpr)).build());
+        }
+
+        Result<GraphQLResponse> result = get.run();
+        if (result.hasErrors()) {
+            log.error("BM25 检索失败: {}", result.getError());
+            return List.of();
+        }
+        log.debug("BM25 检索完成，查询: {}, 返回 {} 条", query,
+                parseSearchResult(result.getResult()).size());
+        return parseSearchResult(result.getResult());
+    }
+
+    // ==================== 混合多路召回 ====================
+
+    /**
+     * 混合多路召回：向量检索 + BM25 检索，经融合策略排序后返回。
+     * <p>
+     * 两路各取 topK * 2 条候选，通过 {@link SearchFusion#fuse} 执行 RRF 或加权求和融合，
+     * 最终截取 topK 条返回。支持降级：单路失败时自动回退为另一路结果。
+     * </p>
+     *
+     * @param query        检索内容
+     * @param topK         最终返回条数
+     * @param filterExpr   可选元数据过滤表达式，null 表示不过滤
+     * @param searchConfig 融合配置（指定融合模式、RRF-k、权重等）
+     * @return 融合排序后的检索结果
+     */
+    public List<Document> hybridSearch(String query, int topK, Filter.Expression filterExpr,
+                                       SearchConfig searchConfig) {
+        initCollection();
+        if (query == null || query.isBlank()) {
+            log.debug("混合检索查询为空，降级为纯向量检索");
+            return similaritySearch(SearchRequest.builder().query(query).topK(topK).build());
+        }
+        int limit = topK <= 0 ? 5 : topK;
+
+        // 并行执行两路检索
+        List<Document> vectorResults = null;
+        List<Document> bm25Results = null;
+
+        // 向量检索
+        try {
+            SearchRequest vecReq = SearchRequest.builder().query(query).topK(limit * 2).build();
+            if (filterExpr != null) {
+                vecReq = SearchRequest.builder().query(query).topK(limit * 2)
+                        .filterExpression(filterExpr).build();
+            }
+            vectorResults = similaritySearch(vecReq);
+        } catch (Exception e) {
+            log.warn("混合检索：向量路失败，将降级使用 BM25 路结果: {}", e.getMessage());
+        }
+
+        // BM25 检索
+        try {
+            bm25Results = bm25Search(query, limit * 2, filterExpr);
+        } catch (Exception e) {
+            log.warn("混合检索：BM25 路失败，将降级使用向量路结果: {}", e.getMessage());
+        }
+
+        // 降级处理：单路失败时回退另一路
+        if (vectorResults == null && bm25Results == null) {
+            log.error("混合检索：两路均失败，返回空列表");
+            return List.of();
+        }
+        if (vectorResults == null || vectorResults.isEmpty()) {
+            log.info("混合检索：向量路无结果，回退 BM25 路结果");
+            return limitResults(bm25Results, limit);
+        }
+        if (bm25Results == null || bm25Results.isEmpty()) {
+            log.info("混合检索：BM25 路无结果，回退向量路结果");
+            return limitResults(vectorResults, limit);
+        }
+
+        // 执行融合
+        List<Document> fused = SearchFusion.fuse(vectorResults, bm25Results, limit, searchConfig);
+        log.info("混合检索完成：向量路 {} 条, BM25 路 {} 条, 融合后 {} 条",
+                vectorResults.size(), bm25Results.size(), fused.size());
+        return fused;
+    }
+
+    /**
+     * 多模式检索统一入口，根据 {@link SearchMode} 分发执行。
+     * <p>
+     * 这是适配器对外暴露的高层检索方法，Service 层可直接调用。
+     * 兼容原有纯向量检索行为。
+     * </p>
+     *
+     * @param query        检索内容
+     * @param topK         返回条数
+     * @param filterExpr   可选过滤表达式
+     * @param searchConfig 检索配置（指定模式与参数）
+     * @return 检索结果
+     */
+    public List<Document> searchByMode(String query, int topK, Filter.Expression filterExpr,
+                                       SearchConfig searchConfig) {
+        if (searchConfig == null || searchConfig.getSearchMode() == null) {
+            searchConfig = SearchConfig.vectorOnly();
+        }
+
+        SearchMode mode = searchConfig.getSearchMode();
+        log.debug("执行检索, mode={}, query={}, topK={}", mode, query, topK);
+
+        return switch (mode) {
+            case BM25_ONLY -> bm25Search(query, topK, filterExpr);
+            case HYBRID -> hybridSearch(query, topK, filterExpr, searchConfig);
+            default -> {
+                // VECTOR_ONLY 或其他未知模式，走原有向量检索
+                SearchRequest request = SearchRequest.builder()
+                        .query(query)
+                        .topK(topK <= 0 ? 5 : topK)
+                        .build();
+                if (filterExpr != null) {
+                    request = SearchRequest.builder()
+                            .query(query)
+                            .topK(topK <= 0 ? 5 : topK)
+                            .filterExpression(filterExpr)
+                            .build();
+                }
+                yield similaritySearch(request);
+            }
+        };
+    }
+
     // ==================== 去重工具 ====================
+
+    /**
+     * 构建检索返回字段数组，BM25 / 向量检索复用。
+     * <p>包含文本内容、元数据、文件信息及 _additional 得分字段。</p>
+     */
+    private Field[] buildSearchFields() {
+        return new Field[]{
+                Field.builder().name("text").build(),
+                Field.builder().name("fileName").build(),
+                Field.builder().name("fileType").build(),
+                Field.builder().name("chunkType").build(),
+                Field.builder().name("fileId").build(),
+                Field.builder().name("textHash").build(),
+                Field.builder().name("recordId").build(),
+                Field.builder().name("documentId").build(),
+                Field.builder().name("documentVersion").build(),
+                Field.builder().name("tenantId").build(),
+                Field.builder().name("kbId").build(),
+                Field.builder().name("metadata").build(),
+                Field.builder().name("_additional")
+                        .fields(Field.builder().name("id").build(),
+                                Field.builder().name("certainty").build(),
+                                Field.builder().name("distance").build())
+                        .build()
+        };
+    }
+
+    /**
+     * 截取列表前 limit 条，不足时返回原列表。
+     */
+    private static List<Document> limitResults(List<Document> results, int limit) {
+        if (results == null || results.isEmpty()) {
+            return List.of();
+        }
+        return results.size() <= limit ? results : results.subList(0, limit);
+    }
 
     private boolean existsByTextHash(String textHash) {
         if (textHash == null || textHash.isBlank()) {

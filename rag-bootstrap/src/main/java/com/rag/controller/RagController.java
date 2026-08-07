@@ -5,6 +5,8 @@ import com.rag.auth.service.KbAccessService;
 import com.rag.service.FileProcessResult;
 import com.rag.service.RagToolService;
 import com.rag.common.chunker.SplitterConfig;
+import com.rag.common.entity.config.SearchConfig;
+import com.rag.common.enums.SearchMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -188,17 +190,58 @@ public class RagController {
     // ==================== 检索与查看 ====================
 
     /**
-     * 向量检索
+     * 多模式检索（兼容原有向量检索，扩展支持 BM25 / 混合召回）。
+     * <p>
+     * 所有新增参数均为可选，不传时默认纯向量模式（100% 兼容原有行为）。
+     * 支持三种检索模式：
+     * <ul>
+     *   <li>{@code searchMode=VECTOR_ONLY} —— 纯向量检索（默认）</li>
+     *   <li>{@code searchMode=BM25_ONLY}  —— 纯 BM25 关键词检索</li>
+     *   <li>{@code searchMode=HYBRID}     —— 混合多路召回（向量 + BM25 融合）</li>
+     * </ul>
+     * 融合参数：RRF 模式时 rrfK 默认 60；加权求和模式时 vectorWeight + bm25Weight 控制权重。
+     * </p>
      */
     @PostMapping("/search")
     public ResponseEntity<?> search(
             @RequestParam("kbId") Long kbId,
             @RequestParam("query") String query,
-            @RequestParam(value = "topK", defaultValue = "5") int topK) {
+            @RequestParam(value = "topK", defaultValue = "5") int topK,
+            // ===== 检索模式（可选，默认 VECTOR_ONLY 兼容原有行为） =====
+            @RequestParam(value = "searchMode", required = false) String searchMode,
+            // ===== RRF 融合参数 =====
+            @RequestParam(value = "rrfK", required = false) Integer rrfK,
+            // ===== 加权求和参数 =====
+            @RequestParam(value = "vectorWeight", required = false) Double vectorWeight,
+            @RequestParam(value = "bm25Weight", required = false) Double bm25Weight) {
         try {
             Long userId = requireAuth();
             kbAccessService.checkViewPermission(userId, kbId);
-            List<FileProcessResult> results = ragToolService.search(query, kbId, topK);
+
+            // 构建 SearchConfig（仅非空参数才设置，保持默认值）
+            SearchConfig.SearchConfigBuilder configBuilder = SearchConfig.builder();
+
+            if (searchMode != null && !searchMode.isBlank()) {
+                try {
+                    configBuilder.searchMode(SearchMode.valueOf(searchMode.toUpperCase()));
+                } catch (IllegalArgumentException e) {
+                    log.warn("未知的 searchMode: {}, 回退为 VECTOR_ONLY", searchMode);
+                    configBuilder.searchMode(SearchMode.VECTOR_ONLY);
+                }
+            }
+
+            if (rrfK != null && rrfK > 0) {
+                configBuilder.rrfK(rrfK);
+            }
+            if (vectorWeight != null) {
+                configBuilder.vectorWeight(vectorWeight);
+            }
+            if (bm25Weight != null) {
+                configBuilder.bm25Weight(bm25Weight);
+            }
+
+            SearchConfig config = configBuilder.build();
+            List<FileProcessResult> results = ragToolService.search(query, kbId, topK, config);
             return ResponseEntity.ok(Map.of("code", 200, "data", results));
         } catch (Exception e) {
             log.error("检索失败", e);

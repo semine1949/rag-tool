@@ -10,14 +10,17 @@ import com.rag.common.chunker.SizeTextSplitter;
 import com.rag.common.chunker.SplitterConfig;
 import com.rag.common.api.DocumentVersionService;
 import com.rag.common.entity.config.EmbeddingConfig;
+import com.rag.common.entity.config.SearchConfig;
 import com.rag.common.entity.config.WeaviateCollectionConfig;
 import com.rag.common.entity.DocChunk;
 import com.rag.common.entity.DocumentVersion;
 import com.rag.common.entity.KbDocument;
 import com.rag.common.enums.ProcessStatusEnum;
+import com.rag.common.enums.SearchMode;
 import com.rag.common.exception.RagException;
 import com.rag.config.factory.EmbeddingModelFactory;
 import com.rag.config.factory.VectorStoreRegistry;
+import com.rag.config.vectorstore.WeaviateVectorStoreAdapter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rag.common.parser.DocumentParseFactory;
@@ -356,31 +359,63 @@ public class RagToolService {
 
     // ==================== 检索 ====================
 
+    /**
+     * 检索（兼容原有接口，默认纯向量模式）。
+     * <p>保持 100% 向后兼容，行为与原有逻辑完全一致。</p>
+     *
+     * @param query 检索内容
+     * @param kbId  知识库 ID
+     * @param topK  返回条数
+     * @return 检索结果
+     */
     public List<FileProcessResult> search(String query, Long kbId, int topK) {
+        return search(query, kbId, topK, null);
+    }
+
+    /**
+     * 多模式检索（扩展接口），支持向量/BM25/混合三种模式。
+     * <p>
+     * searchConfig 为 null 时默认走纯向量模式，与原有逻辑完全一致。
+     * 支持 BM25 参数、RRF 融合参数等可选配置。
+     * </p>
+     *
+     * @param query        检索内容
+     * @param kbId         知识库 ID
+     * @param topK         返回条数
+     * @param searchConfig 检索配置（可选，null 时默认 VECTOR_ONLY）
+     * @return 检索结果
+     */
+    public List<FileProcessResult> search(String query, Long kbId, int topK, SearchConfig searchConfig) {
         if (query == null || query.isBlank()) {
             throw new RagException("RAG_QUERY_EMPTY", "检索内容不能为空");
         }
+        // topK 兜底
+        int effectiveTopK = topK <= 0 ? 5 : topK;
+
         KbConfigService.KbLoadedConfig loaded = kbConfigService.loadConfigs(kbId);
         EmbeddingConfig embeddingConfig = loaded.embeddingConfig();
         WeaviateCollectionConfig collectionConfig = loaded.collectionConfig();
 
         EmbeddingModel model = embeddingModelFactory.getModel(embeddingConfig);
-        VectorStore store = vectorStoreRegistry.getWeaviateStore(
+        WeaviateVectorStoreAdapter store = (WeaviateVectorStoreAdapter) vectorStoreRegistry.getWeaviateStore(
                 collectionConfig.getClassName(), model, collectionConfig.getVectorDim());
 
-        SearchRequest request = SearchRequest.builder()
-                .query(query)
-                .topK(topK <= 0 ? 5 : topK)
-                .build();
+        // 默认配置：纯向量模式
+        if (searchConfig == null) {
+            searchConfig = SearchConfig.vectorOnly();
+        }
 
-        List<Document> documents = store.similaritySearch(request);
-        log.info("检索完成，命中 {} 条", documents.size());
+        // 通过适配器的统一多模式检索入口执行
+        List<Document> documents = store.searchByMode(query, effectiveTopK, null, searchConfig);
+
+        log.info("检索完成, mode={}, 命中 {} 条", searchConfig.getSearchMode(), documents.size());
 
         return documents.stream().map(d -> FileProcessResult.builder()
                 .fileId(String.valueOf(d.getMetadata().get("docId")))
                 .fileName((String) d.getMetadata().get("fileName"))
                 .snippet(d.getText())
                 .score(d.getScore())
+                .documentVersion((String) d.getMetadata().get("documentVersion"))
                 .success(true)
                 .build()).collect(Collectors.toList());
     }
