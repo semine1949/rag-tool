@@ -1,7 +1,7 @@
 package com.rag.config.factory;
 
-import com.rag.common.config.EmbeddingConfig;
-import com.rag.common.config.EmbeddingProperties;
+import com.rag.common.entity.config.EmbeddingConfig;
+import com.rag.common.entity.config.EmbeddingProperties;
 import com.rag.config.embedding.OpenAiCompatibleEmbeddingModel;
 import com.rag.common.enums.EmbeddingModelType;
 import org.springframework.ai.embedding.EmbeddingModel;

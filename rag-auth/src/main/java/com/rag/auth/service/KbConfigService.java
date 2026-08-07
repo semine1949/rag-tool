@@ -1,9 +1,9 @@
 package com.rag.auth.service;
 
 import com.rag.auth.mapper.KnowledgeBaseMapper;
-import com.rag.common.config.EmbeddingConfig;
-import com.rag.common.config.EmbeddingProperties;
-import com.rag.common.config.WeaviateCollectionConfig;
+import com.rag.common.entity.config.EmbeddingConfig;
+import com.rag.common.entity.config.EmbeddingProperties;
+import com.rag.common.entity.config.WeaviateCollectionConfig;
 import com.rag.common.entity.KnowledgeBase;
 import com.rag.common.enums.EmbeddingModelType;
 import com.rag.config.factory.VectorStoreRegistry;

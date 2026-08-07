@@ -1,4 +1,4 @@
-package com.rag.common.config;
+package com.rag.common.entity.config;
 
 import com.rag.common.enums.EmbeddingModelType;
 import lombok.AllArgsConstructor;

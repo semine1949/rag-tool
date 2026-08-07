@@ -5,7 +5,7 @@ import com.rag.auth.mapper.*;
 import com.rag.auth.service.*;
 import com.rag.interceptor.JwtAuthInterceptor;
 import com.rag.common.chunker.ChunkStrategyFactory;
-import com.rag.common.config.EmbeddingProperties;
+import com.rag.common.entity.config.EmbeddingProperties;
 import com.rag.config.factory.EmbeddingModelFactory;
 import com.rag.config.factory.VectorStoreRegistry;
 import com.rag.common.parser.DocumentParseFactory;

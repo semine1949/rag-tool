@@ -5,7 +5,7 @@ import com.rag.auth.mapper.*;
 import com.rag.auth.service.AuthServiceImpl;
 import com.rag.auth.service.KbAccessService;
 import com.rag.auth.service.KbConfigService;
-import com.rag.common.config.EmbeddingConfig;
+import com.rag.common.entity.config.EmbeddingConfig;
 import com.rag.common.entity.*;
 import com.rag.common.exception.RagException;
 import org.slf4j.Logger;

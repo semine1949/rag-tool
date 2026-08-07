@@ -44,7 +44,7 @@ rag:
   # ---------- Embedding模型配置（远程 API，均走 OpenAI 兼容协议） ----------
   embedding:
     # 默认模型类型: tongyi / bge-m3 / openai
-    type: tongyi
+    type: bge-m3
 
     # Qwen3 Embedding 配置（当模型名含 qwen/tongyi 时生效，走硅基流动）
     tongyi:
