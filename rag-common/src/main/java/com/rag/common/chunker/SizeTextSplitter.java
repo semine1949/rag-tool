@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -24,7 +25,7 @@ import java.util.regex.Pattern;
  *       仅当单个片段超过 maxTokens、需要硬截断时才生效，用于保持上下文衔接。</li>
  * </ul>
  * <p>
- * 输出每块包含 content / chunkIndex / chunkMode（"text_model"）字段，
+ * 输出每块包含 content / chunkId / chunkIndex / chunkMode（"text_model"）字段，
  * 经 {@link ChunkDocuments#of} 写入 Spring AI {@link Document} 元数据。
  */
 public class SizeTextSplitter extends TextSplitter {
@@ -174,7 +175,7 @@ public class SizeTextSplitter extends TextSplitter {
     }
 
     /**
-     * 构建单个分块 Document，写入 chunkIndex / chunkMode 元数据。
+     * 构建单个分块 Document，写入 chunkId / chunkIndex / chunkMode 元数据。
      *
      * @param input      输入 Document，用于继承业务元数据
      * @param text       分块文本
@@ -183,6 +184,7 @@ public class SizeTextSplitter extends TextSplitter {
      */
     private Document buildChunk(Document input, String text, int chunkIndex) {
         Map<String, Object> extra = new HashMap<>();
+        extra.put("chunkId", UUID.randomUUID().toString());
         extra.put("chunkIndex", chunkIndex);
         extra.put("chunkMode", CHUNK_MODE);
         return ChunkDocuments.of(input, text, CHUNK_MODE, extra);
