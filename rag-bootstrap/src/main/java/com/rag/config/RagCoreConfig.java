@@ -8,6 +8,7 @@ import com.rag.common.chunker.ChunkStrategyFactory;
 import com.rag.common.entity.config.EmbeddingProperties;
 import com.rag.config.factory.EmbeddingModelFactory;
 import com.rag.config.factory.VectorStoreRegistry;
+import com.rag.config.rerank.RerankStrategyFactory;
 import com.rag.common.parser.DocumentParseFactory;
 import com.rag.common.parser.impl.*;
 import org.mybatis.spring.annotation.MapperScan;
@@ -138,6 +139,21 @@ public class RagCoreConfig implements WebMvcConfigurer {
     @Bean
     public VectorStoreRegistry vectorStoreRegistry() {
         return new VectorStoreRegistry(weaviateUrl, weaviateToken);
+    }
+
+    // ==================== 重排策略工厂 ====================
+
+    /**
+     * 重排策略工厂 Bean。
+     * <p>
+     * 策略模式 + 工厂模式：封装重排策略的实例化与缓存，
+     * 调用方仅需传入 {@link com.rag.common.entity.config.RerankConfig} 即可获取对应策略。
+     * 首期支持 Qwen3-Reranker，后续扩展在工厂内部添加模型类型映射。
+     * </p>
+     */
+    @Bean
+    public RerankStrategyFactory rerankStrategyFactory() {
+        return new RerankStrategyFactory();
     }
 
     // ==================== 密码加密 ====================

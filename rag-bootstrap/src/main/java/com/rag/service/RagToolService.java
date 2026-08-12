@@ -10,6 +10,7 @@ import com.rag.common.chunker.SizeTextSplitter;
 import com.rag.common.chunker.SplitterConfig;
 import com.rag.common.api.DocumentVersionService;
 import com.rag.common.entity.config.EmbeddingConfig;
+import com.rag.common.entity.config.RerankConfig;
 import com.rag.common.entity.config.SearchConfig;
 import com.rag.common.entity.config.WeaviateCollectionConfig;
 import com.rag.common.entity.DocChunk;
@@ -18,8 +19,10 @@ import com.rag.common.entity.KbDocument;
 import com.rag.common.enums.ProcessStatusEnum;
 import com.rag.common.enums.SearchMode;
 import com.rag.common.exception.RagException;
+import com.rag.common.rerank.RerankStrategy;
 import com.rag.config.factory.EmbeddingModelFactory;
 import com.rag.config.factory.VectorStoreRegistry;
+import com.rag.config.rerank.RerankStrategyFactory;
 import com.rag.config.vectorstore.WeaviateVectorStoreAdapter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -73,6 +76,8 @@ public class RagToolService {
     private final Executor ragTaskExecutor;
     /** JSON 序列化器（生成 params_snapshot 参数快照） */
     private final ObjectMapper objectMapper;
+    /** 重排策略工厂（可插拔，null 时禁用重排） */
+    private final RerankStrategyFactory rerankStrategyFactory;
 
     public RagToolService(DocumentParseFactory parseFactory,
                           ChunkStrategyFactory chunkStrategyFactory,
@@ -83,7 +88,8 @@ public class RagToolService {
                           KbDocumentMapper kbDocumentMapper,
                           DocChunkMapper docChunkMapper,
                           Executor ragTaskExecutor,
-                          ObjectMapper objectMapper) {
+                          ObjectMapper objectMapper,
+                          RerankStrategyFactory rerankStrategyFactory) {
         this.parseFactory = parseFactory;
         this.chunkStrategyFactory = chunkStrategyFactory;
         this.embeddingModelFactory = embeddingModelFactory;
@@ -94,6 +100,7 @@ public class RagToolService {
         this.docChunkMapper = docChunkMapper;
         this.ragTaskExecutor = ragTaskExecutor;
         this.objectMapper = objectMapper;
+        this.rerankStrategyFactory = rerankStrategyFactory;
     }
 
     // ==================== 单文件处理 ====================
@@ -405,10 +412,44 @@ public class RagToolService {
             searchConfig = SearchConfig.vectorOnly();
         }
 
+        // ===== 重排候选池放大：启用重排时召回更多候选供精排挑选 =====
+        int recallTopK = effectiveTopK;
+        boolean rerankEnabled = Boolean.TRUE.equals(searchConfig.getRerankEnabled())
+                && searchConfig.getSearchMode() == SearchMode.HYBRID;
+        if (rerankEnabled) {
+            int multiplier = searchConfig.getRerankCandidateMultiplier() != null
+                    ? searchConfig.getRerankCandidateMultiplier() : 3;
+            recallTopK = effectiveTopK * multiplier;
+            log.debug("重排候选池放大: topK={} → recallTopK={} (x{})", effectiveTopK, recallTopK, multiplier);
+        }
+
         // 通过适配器的统一多模式检索入口执行
-        List<Document> documents = store.searchByMode(query, effectiveTopK, null, searchConfig);
+        List<Document> documents = store.searchByMode(query, recallTopK, null, searchConfig);
 
         log.info("检索完成, mode={}, 命中 {} 条", searchConfig.getSearchMode(), documents.size());
+
+        // ===== 重排节点：在融合结果后、最终 topK 截断前插入 =====
+        if (rerankEnabled && !documents.isEmpty() && rerankStrategyFactory != null) {
+            try {
+                RerankConfig rerankConfig = buildRerankConfig(embeddingConfig);
+                RerankStrategy strategy = rerankStrategyFactory.getStrategy(rerankConfig);
+                if (strategy != null) {
+                    List<Document> rerankedDocs = strategy.rerank(query, documents);
+                    if (rerankedDocs != null && !rerankedDocs.isEmpty()) {
+                        documents = rerankedDocs;
+                        log.info("重排完成, 精排结果 {} 条", documents.size());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("重排异常降级，使用原始融合排序结果: {}", e.getMessage());
+                // 降级：保持原始 documents 不变
+            }
+        }
+
+        // 最终 topK 截断
+        if (documents.size() > effectiveTopK) {
+            documents = documents.subList(0, effectiveTopK);
+        }
 
         return documents.stream().map(d -> FileProcessResult.builder()
                 .fileId(String.valueOf(d.getMetadata().get("docId")))
@@ -418,6 +459,24 @@ public class RagToolService {
                 .documentVersion((String) d.getMetadata().get("documentVersion"))
                 .success(true)
                 .build()).collect(Collectors.toList());
+    }
+
+    /**
+     * 从 EmbeddingConfig 构建重排配置。
+     * <p>重排复用 Embedding 模型的 apiKey 和 baseUrl（同一硅基流动端点），
+     * 重排专用参数从 searchConfig 获取。</p>
+     *
+     * @param embeddingConfig Embedding 模型配置（提供 apiKey / baseUrl）
+     * @return 重排配置
+     */
+    private RerankConfig buildRerankConfig(EmbeddingConfig embeddingConfig) {
+        return RerankConfig.builder()
+                .enabled(true)
+                .modelType("qwen3-reranker")
+                .baseUrl(embeddingConfig.getBaseUrl() != null
+                        ? embeddingConfig.getBaseUrl() : "https://api.siliconflow.cn/v1")
+                .apiKey(embeddingConfig.getModelSource())
+                .build();
     }
 
     // ==================== 文档列表 ====================

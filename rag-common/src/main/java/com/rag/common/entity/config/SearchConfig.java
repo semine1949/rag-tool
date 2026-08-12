@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 检索配置实体，封装 BM25 检索参数与混合融合参数。
+ * 检索配置实体，封装 BM25 检索参数、混合融合参数与重排参数。
  * <p>
  * 配置优先级：请求参数 > 知识库配置 > 全局默认配置（application.yml）。
  * 所有字段均为可空，null 时由上层按优先级逐级回退至全局默认值。
@@ -62,6 +62,22 @@ public class SearchConfig {
      */
     @Builder.Default
     private String fusionMode = "rrf";
+
+    // ==================== 重排参数 ====================
+
+    /**
+     * 重排开关：true 启用精排，false/null 跳过重排（默认关闭，100% 兼容原有行为）。
+     * <p>仅作用于 HYBRID 混合模式，纯向量/纯 BM25 单路检索不触发重排。</p>
+     */
+    @Builder.Default
+    private Boolean rerankEnabled = false;
+
+    /**
+     * 重排候选池放大倍数，启用重排时召回阶段放大候选数量。
+     * <p>默认 3 倍，即取 topK * 3 条候选送入精排，精排后再截取最终 topK。</p>
+     */
+    @Builder.Default
+    private Integer rerankCandidateMultiplier = 3;
 
     // ==================== 工厂方法 ====================
 

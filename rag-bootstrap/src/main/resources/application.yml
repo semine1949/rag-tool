@@ -104,6 +104,27 @@ rag:
       # BM25 检索默认权重
       bm25-weight: 0.5
 
+  # ---------- 重排配置（Qwen3-Rerank 精排，默认关闭） ----------
+  rerank:
+    # 是否启用精排（默认关闭，仅 HYBRID 模式生效）
+    enabled: false
+    # 重排模型类型标识（首期固定 qwen3-reranker）
+    model-type: qwen3-reranker
+    # 模型名称（硅基流动 Qwen3-Reranker）
+    model-name: Qwen/Qwen3-Reranker
+    # Rerank API Base URL（复用硅基流动端点）
+    base-url: https://api.siliconflow.cn/v1
+    # 候选池放大倍数（召回 topK * multiplier 条送入精排）
+    candidate-multiplier: 3
+    # 单批最大文档数（超过时自动分批）
+    batch-size: 20
+    # 连接超时（秒）
+    connect-timeout-seconds: 30
+    # 读取超时（秒）
+    read-timeout-seconds: 60
+    # 每秒最大调用次数（限流保护）
+    max-qps: 5
+
   # ---------- 鉴权与安全配置（需求6-7） ----------
   auth:
     jwt:

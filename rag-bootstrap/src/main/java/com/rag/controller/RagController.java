@@ -190,16 +190,18 @@ public class RagController {
     // ==================== 检索与查看 ====================
 
     /**
-     * 多模式检索（兼容原有向量检索，扩展支持 BM25 / 混合召回）。
+     * 多模式检索（兼容原有向量检索，扩展支持 BM25 / 混合召回 / 重排精排）。
      * <p>
      * 所有新增参数均为可选，不传时默认纯向量模式（100% 兼容原有行为）。
      * 支持三种检索模式：
      * <ul>
      *   <li>{@code searchMode=VECTOR_ONLY} —— 纯向量检索（默认）</li>
      *   <li>{@code searchMode=BM25_ONLY}  —— 纯 BM25 关键词检索</li>
-     *   <li>{@code searchMode=HYBRID}     —— 混合多路召回（向量 + BM25 融合）</li>
+     *   <li>{@code searchMode=HYBRID}     —— 混合多路召回（向量 + BM25 融合），可叠加重排精排</li>
      * </ul>
      * 融合参数：RRF 模式时 rrfK 默认 60；加权求和模式时 vectorWeight + bm25Weight 控制权重。
+     * 重排参数：rerank=true 启用 Qwen3-Rerank 精排（仅 HYBRID 模式生效），
+     * rerankMultiplier 控制候选池放大倍数（默认 3）。
      * </p>
      */
     @PostMapping("/search")
@@ -213,7 +215,10 @@ public class RagController {
             @RequestParam(value = "rrfK", required = false) Integer rrfK,
             // ===== 加权求和参数 =====
             @RequestParam(value = "vectorWeight", required = false) Double vectorWeight,
-            @RequestParam(value = "bm25Weight", required = false) Double bm25Weight) {
+            @RequestParam(value = "bm25Weight", required = false) Double bm25Weight,
+            // ===== 重排参数（可选，默认关闭，仅 HYBRID 模式生效） =====
+            @RequestParam(value = "rerank", required = false) Boolean rerank,
+            @RequestParam(value = "rerankMultiplier", required = false) Integer rerankMultiplier) {
         try {
             Long userId = requireAuth();
             kbAccessService.checkViewPermission(userId, kbId);
@@ -238,6 +243,13 @@ public class RagController {
             }
             if (bm25Weight != null) {
                 configBuilder.bm25Weight(bm25Weight);
+            }
+            // ===== 重排参数（可选，默认关闭） =====
+            if (rerank != null) {
+                configBuilder.rerankEnabled(rerank);
+            }
+            if (rerankMultiplier != null && rerankMultiplier > 0) {
+                configBuilder.rerankCandidateMultiplier(rerankMultiplier);
             }
 
             SearchConfig config = configBuilder.build();
