@@ -262,6 +262,33 @@ public class RagController {
     }
 
     /**
+     * 多知识库检索 + 白名单过滤。
+     * <p>
+     * 采用「物理隔离 + 逻辑联合 + 应用层后过滤」方案：串行遍历多个知识库召回候选，
+     * 合并为统一候选池后，在应用层执行白名单过滤、跨库去重、全局精排，返回全局最优切片。
+     * 任一知识库无 READ 权限则阻断整个请求。
+     * </p>
+     */
+    @PostMapping("/multi-search")
+    public ResponseEntity<?> multiSearch(@RequestBody MultiSearchRequest request) {
+        try {
+            Long userId = requireAuth();
+            // 步骤1：逐个校验每个知识库的 READ 权限，任一失败阻断整个请求
+            if (request.getKbIds() == null || request.getKbIds().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("code", 400, "msg", "知识库 ID 列表不能为空"));
+            }
+            for (Long kbId : request.getKbIds()) {
+                kbAccessService.checkViewPermission(userId, kbId);
+            }
+            List<com.rag.service.MultiSearchResult> results = ragToolService.multiSearch(request);
+            return ResponseEntity.ok(Map.of("code", 200, "data", results));
+        } catch (Exception e) {
+            log.error("多知识库检索失败", e);
+            return ResponseEntity.badRequest().body(Map.of("code", 500, "msg", e.getMessage()));
+        }
+    }
+
+    /**
      * 查看知识库文档列表
      */
     @GetMapping("/documents")

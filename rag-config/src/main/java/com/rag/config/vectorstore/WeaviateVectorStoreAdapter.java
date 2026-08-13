@@ -398,6 +398,7 @@ public class WeaviateVectorStoreAdapter implements VectorStore {
                 Field.builder().name("fileName").build(),
                 Field.builder().name("fileType").build(),
                 Field.builder().name("chunkType").build(),
+                Field.builder().name("parentChunkId").build(),
                 Field.builder().name("fileId").build(),
                 Field.builder().name("textHash").build(),
                 Field.builder().name("recordId").build(),
