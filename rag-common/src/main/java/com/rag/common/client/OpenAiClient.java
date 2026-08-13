@@ -25,8 +25,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 统一的 OpenAI 兼容协议客户端，封装所有大模型 HTTP 调用。
  * <p>
  * 将项目中分散的 Embedding / Rerank / OCR 调用统一到此单一入口，
- * 共享 OkHttp 连接池、Jackson 序列化、Bearer Token 鉴权等基础设施，
- * 消除原有 {@code OpenAiCompatibleEmbeddingModel} / {@code Qwen3RerankStrategy} / {@code DeepSeekOcrClient} 的重复代码。
+ * 共享 OkHttp 连接池、Jackson 序列化、Bearer Token 鉴权等基础设施。
+ * <p>
+ * 注：Embedding 已迁移至 {@code AiModelFactory}（官方 OpenAiEmbeddingModel），
+ * 本类现主要承载 Rerank（供 OpenAiRerankModel 复用）与 OCR 的 HTTP 调用能力。
  * </p>
  *
  * <h3>方法概览</h3>

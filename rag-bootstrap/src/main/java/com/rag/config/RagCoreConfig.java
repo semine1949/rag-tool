@@ -35,8 +35,8 @@ import java.util.function.Function;
 /**
  * 核心Bean配置（Spring AI 重构版）。
  * <p>
- * 使用统一的 {@link OpenAiClient} 封装所有 OpenAI 兼容协议调用，
- * 替代原有的 {@code OpenAiCompatibleEmbeddingModel} / {@code Qwen3RerankStrategy} / {@code DeepSeekOcrClient}。
+ * 使用统一的 AI 模型工厂（{@code AiModelFactory}）管理 Embedding / Rerank 等模型创建，
+ * OCR 继续由 {@link OpenAiClient} 直连；适配器（OpenAI/Ollama/DashScope）通过 {@code @Component} 自动注册。
  * </p>
  */
 @Configuration
