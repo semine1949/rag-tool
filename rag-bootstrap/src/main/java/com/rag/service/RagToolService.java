@@ -10,7 +10,6 @@ import com.rag.common.chunker.SizeTextSplitter;
 import com.rag.common.chunker.SplitterConfig;
 import com.rag.common.api.DocumentVersionService;
 import com.rag.common.entity.config.EmbeddingConfig;
-import com.rag.common.entity.config.RerankConfig;
 import com.rag.common.entity.config.SearchConfig;
 import com.rag.common.entity.config.WeaviateCollectionConfig;
 import com.rag.common.entity.DocChunk;
@@ -19,10 +18,9 @@ import com.rag.common.entity.KbDocument;
 import com.rag.common.enums.ProcessStatusEnum;
 import com.rag.common.enums.SearchMode;
 import com.rag.common.exception.RagException;
-import com.rag.common.rerank.RerankStrategy;
-import com.rag.config.factory.EmbeddingModelFactory;
+import com.rag.config.factory.AiModelFactory;
 import com.rag.config.factory.VectorStoreRegistry;
-import com.rag.config.rerank.RerankStrategyFactory;
+import com.rag.config.model.RerankModel;
 import com.rag.config.vectorstore.WeaviateVectorStoreAdapter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -67,7 +65,8 @@ public class RagToolService {
     private final DocumentParseFactory parseFactory;
     /** 封装式分片策略工厂：依据 chunkStrategy + SplitterConfig 构造 splitter */
     private final ChunkStrategyFactory chunkStrategyFactory;
-    private final EmbeddingModelFactory embeddingModelFactory;
+    /** AI 模型工厂：统一创建/缓存 Embedding 与 Rerank 模型 */
+    private final AiModelFactory aiModelFactory;
     private final VectorStoreRegistry vectorStoreRegistry;
     private final DocumentVersionService versionService;
     private final KbConfigService kbConfigService;
@@ -76,23 +75,20 @@ public class RagToolService {
     private final Executor ragTaskExecutor;
     /** JSON 序列化器（生成 params_snapshot 参数快照） */
     private final ObjectMapper objectMapper;
-    /** 重排策略工厂（可插拔，null 时禁用重排） */
-    private final RerankStrategyFactory rerankStrategyFactory;
 
     public RagToolService(DocumentParseFactory parseFactory,
                           ChunkStrategyFactory chunkStrategyFactory,
-                          EmbeddingModelFactory embeddingModelFactory,
+                          AiModelFactory aiModelFactory,
                           VectorStoreRegistry vectorStoreRegistry,
                           DocumentVersionService versionService,
                           KbConfigService kbConfigService,
                           KbDocumentMapper kbDocumentMapper,
                           DocChunkMapper docChunkMapper,
                           Executor ragTaskExecutor,
-                          ObjectMapper objectMapper,
-                          RerankStrategyFactory rerankStrategyFactory) {
+                          ObjectMapper objectMapper) {
         this.parseFactory = parseFactory;
         this.chunkStrategyFactory = chunkStrategyFactory;
-        this.embeddingModelFactory = embeddingModelFactory;
+        this.aiModelFactory = aiModelFactory;
         this.vectorStoreRegistry = vectorStoreRegistry;
         this.versionService = versionService;
         this.kbConfigService = kbConfigService;
@@ -100,7 +96,6 @@ public class RagToolService {
         this.docChunkMapper = docChunkMapper;
         this.ragTaskExecutor = ragTaskExecutor;
         this.objectMapper = objectMapper;
-        this.rerankStrategyFactory = rerankStrategyFactory;
     }
 
     // ==================== 单文件处理 ====================
@@ -176,7 +171,7 @@ public class RagToolService {
                     EmbeddingConfig embConfig = loaded.embeddingConfig();
                     WeaviateCollectionConfig colConfig = loaded.collectionConfig();
                     VectorStore store = vectorStoreRegistry.getWeaviateStore(
-                            colConfig.getClassName(), embeddingModelFactory.getModel(embConfig),
+                            colConfig.getClassName(), resolveEmbeddingModel(embConfig),
                             colConfig.getVectorDim());
                     store.delete(new Filter.Expression(Filter.ExpressionType.EQ,
                             new Filter.Key("fileId"), new Filter.Value(fileId)));
@@ -248,7 +243,7 @@ public class RagToolService {
             EmbeddingConfig embeddingConfig = loaded.embeddingConfig();
             WeaviateCollectionConfig collectionConfig = loaded.collectionConfig();
             VectorStore store = vectorStoreRegistry.getWeaviateStore(
-                    collectionConfig.getClassName(), embeddingModelFactory.getModel(embeddingConfig),
+                    collectionConfig.getClassName(), resolveEmbeddingModel(embeddingConfig),
                     collectionConfig.getVectorDim());
 
             store.add(chunks);
@@ -403,7 +398,7 @@ public class RagToolService {
         EmbeddingConfig embeddingConfig = loaded.embeddingConfig();
         WeaviateCollectionConfig collectionConfig = loaded.collectionConfig();
 
-        EmbeddingModel model = embeddingModelFactory.getModel(embeddingConfig);
+        EmbeddingModel model = resolveEmbeddingModel(embeddingConfig);
         WeaviateVectorStoreAdapter store = (WeaviateVectorStoreAdapter) vectorStoreRegistry.getWeaviateStore(
                 collectionConfig.getClassName(), model, collectionConfig.getVectorDim());
 
@@ -429,12 +424,12 @@ public class RagToolService {
         log.info("检索完成, mode={}, 命中 {} 条", searchConfig.getSearchMode(), documents.size());
 
         // ===== 重排节点：在融合结果后、最终 topK 截断前插入 =====
-        if (rerankEnabled && !documents.isEmpty() && rerankStrategyFactory != null) {
+        if (rerankEnabled && !documents.isEmpty()) {
             try {
-                RerankConfig rerankConfig = buildRerankConfig(embeddingConfig);
-                RerankStrategy strategy = rerankStrategyFactory.getStrategy(rerankConfig);
-                if (strategy != null) {
-                    List<Document> rerankedDocs = strategy.rerank(query, documents);
+                // 通过 AiModelFactory 获取重排模型（统一由工厂创建 + 缓存）
+                RerankModel rerankModel = resolveRerankModel();
+                if (rerankModel != null) {
+                    List<Document> rerankedDocs = rerank(query, documents, rerankModel);
                     if (rerankedDocs != null && !rerankedDocs.isEmpty()) {
                         documents = rerankedDocs;
                         log.info("重排完成, 精排结果 {} 条", documents.size());
@@ -462,21 +457,46 @@ public class RagToolService {
     }
 
     /**
-     * 从 EmbeddingConfig 构建重排配置。
-     * <p>重排复用 Embedding 模型的 apiKey 和 baseUrl（同一硅基流动端点），
-     * 重排专用参数从 searchConfig 获取。</p>
+     * 解析重排模型：从 {@link AiModelFactory} 配置中查找第一个 RERANK 类别模型。
      *
-     * @param embeddingConfig Embedding 模型配置（提供 apiKey / baseUrl）
-     * @return 重排配置
+     * @return 重排模型；未配置时返回 {@code null}
      */
-    private RerankConfig buildRerankConfig(EmbeddingConfig embeddingConfig) {
-        return RerankConfig.builder()
-                .enabled(true)
-                .modelType("qwen3-reranker")
-                .baseUrl(embeddingConfig.getBaseUrl() != null
-                        ? embeddingConfig.getBaseUrl() : "https://api.siliconflow.cn/v1")
-                .apiKey(embeddingConfig.getModelSource())
-                .build();
+    private RerankModel resolveRerankModel() {
+        List<String> rerankNames = aiModelFactory.getModelNamesByCategory(
+                com.rag.common.enums.ModelCategory.RERANK);
+        if (rerankNames.isEmpty()) {
+            log.warn("未配置 RERANK 类别模型，跳过重排");
+            return null;
+        }
+        String modelName = rerankNames.get(0);
+        return aiModelFactory.getRerankModel(modelName);
+    }
+
+    /**
+     * 调用重排模型执行精排，并转换为 Document 列表。
+     * <p>重排结果按索引回填到原始文档列表，按精排得分降序返回。</p>
+     *
+     * @param query      用户查询
+     * @param documents  候选文档列表
+     * @param rerankModel 重排模型
+     * @return 精排后的文档列表
+     */
+    private List<Document> rerank(String query, List<Document> documents, RerankModel rerankModel) {
+        List<String> texts = documents.stream().map(Document::getText).toList();
+        List<RerankModel.RerankResult> results = rerankModel.rerank(query, texts, documents.size());
+        if (results == null || results.isEmpty()) {
+            return documents;
+        }
+        // 按精排结果顺序重建文档列表，并将精排得分写入 metadata
+        List<Document> reranked = new ArrayList<>(results.size());
+        for (RerankModel.RerankResult r : results) {
+            if (r.index() >= 0 && r.index() < documents.size()) {
+                Document doc = documents.get(r.index());
+                doc.getMetadata().put("relevanceScore", r.score());
+                reranked.add(doc);
+            }
+        }
+        return reranked;
     }
 
     // ==================== 文档列表 ====================
@@ -486,6 +506,31 @@ public class RagToolService {
     }
 
     // ==================== 状态机辅助方法 ====================
+
+    /**
+     * 桥接：根据 EmbeddingConfig 解析 EmbeddingModel。
+     * <p>将知识库维度的 embedding 模型类型映射到 {@link AiModelFactory} 配置中的逻辑模型名，
+     * 再由工厂统一创建（惰性 + 缓存）。</p>
+     *
+     * @param embeddingConfig Embedding 配置（含模型类型）
+     * @return EmbeddingModel 实例
+     */
+    private EmbeddingModel resolveEmbeddingModel(EmbeddingConfig embeddingConfig) {
+        // 将 EmbeddingModelType 映射为 spring.ai.platform.models 中的逻辑模型名
+        String logicalName = switch (embeddingConfig.getModelType()) {
+            case BGE_M3 -> "bge-m3";
+            case TONGYI -> "tongyi";
+            case OPENAI -> "openai";
+        };
+        if (!aiModelFactory.existsModel(logicalName)) {
+            // 逻辑名未配置时，回退尝试直接按 API 模型名查找
+            String apiModelName = embeddingConfig.getModelName();
+            if (apiModelName != null && aiModelFactory.existsModel(apiModelName)) {
+                logicalName = apiModelName;
+            }
+        }
+        return aiModelFactory.getEmbeddingModel(logicalName);
+    }
 
     private void updateStatus(Long docId, ProcessStatusEnum status) {
         if (docId == null) {

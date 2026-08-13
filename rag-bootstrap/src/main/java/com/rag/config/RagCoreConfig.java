@@ -7,9 +7,8 @@ import com.rag.interceptor.JwtAuthInterceptor;
 import com.rag.common.chunker.ChunkStrategyFactory;
 import com.rag.common.entity.config.EmbeddingProperties;
 import com.rag.common.client.OpenAiClient;
-import com.rag.config.factory.EmbeddingModelFactory;
 import com.rag.config.factory.VectorStoreRegistry;
-import com.rag.config.rerank.RerankStrategyFactory;
+import com.rag.config.properties.AiModelProperties;
 import com.rag.common.parser.DocumentParseFactory;
 import com.rag.common.parser.impl.*;
 import org.mybatis.spring.annotation.MapperScan;
@@ -17,6 +16,7 @@ import org.springframework.ai.document.DocumentReader;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
@@ -40,6 +40,7 @@ import java.util.function.Function;
  * </p>
  */
 @Configuration
+@EnableConfigurationProperties(AiModelProperties.class)
 @MapperScan("com.rag.auth.mapper")
 public class RagCoreConfig implements WebMvcConfigurer {
 
@@ -141,11 +142,8 @@ public class RagCoreConfig implements WebMvcConfigurer {
 
     // ==================== Embedding / 向量库（Spring AI） ====================
 
-    @Bean
-    public EmbeddingModelFactory embeddingModelFactory(EmbeddingProperties embeddingProperties,
-                                                       OpenAiClient openAiClient) {
-        return new EmbeddingModelFactory(embeddingProperties, openAiClient);
-    }
+    // 说明：Embedding 模型统一由 AiModelFactory（@Component 自动注册）创建，
+    // 不再单独注册 EmbeddingModelFactory Bean。
 
     @Value("${rag.weaviate.url:}")
     private String weaviateUrl;
@@ -158,20 +156,10 @@ public class RagCoreConfig implements WebMvcConfigurer {
         return new VectorStoreRegistry(weaviateUrl, weaviateToken);
     }
 
-    // ==================== 重排策略工厂 ====================
+    // ==================== 重排模型 ====================
 
-    /**
-     * 重排策略工厂 Bean。
-     * <p>
-     * 策略模式 + 工厂模式：封装重排策略的实例化与缓存，
-     * 调用方仅需传入 {@link com.rag.common.entity.config.RerankConfig} 即可获取对应策略。
-     * 首期支持 Qwen3-Reranker，后续扩展在工厂内部添加模型类型映射。
-     * </p>
-     */
-    @Bean
-    public RerankStrategyFactory rerankStrategyFactory(OpenAiClient openAiClient) {
-        return new RerankStrategyFactory(openAiClient);
-    }
+    // 说明：重排模型统一由 AiModelFactory.getRerankModel 创建（不走适配器），
+    // 不再单独注册 RerankStrategyFactory Bean。
 
     // ==================== 密码加密 ====================
 

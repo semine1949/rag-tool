@@ -26,6 +26,26 @@
             <artifactId>client</artifactId>
             <version>4.6.0</version>
         </dependency>
+        <!-- ===== Spring AI 官方连接器 starter ===== -->
+        <!-- OpenAI 协议官方 SDK：OpenAiApi / OpenAiChatModel / OpenAiEmbeddingModel / OpenAiEmbeddingOptions -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+        <!-- Ollama 协议官方 SDK：OllamaApi / OllamaChatModel / OllamaEmbeddingModel -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-ollama</artifactId>
+        </dependency>
+        <!-- DashScope（阿里云通义/百炼）官方 SDK：DashScopeApi / DashScopeChatModel / DashScopeEmbeddingModel。
+             官方 Spring AI 无 dashscope starter，由 spring-ai-alibaba 体系提供；
+             1.0.0.2 基于 Spring AI 1.0.0，与项目 spring-ai-bom:1.0.0 对齐，避免版本冲突。 -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+            <version>1.0.0.2</version>
+        </dependency>
+
         <!-- OpenAI 兼容 Embedding HTTP 调用 -->
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
