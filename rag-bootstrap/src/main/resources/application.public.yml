@@ -1,62 +1,89 @@
 # ============================================================================
 # RAG向量入库工具 - 大模型配置清单
 # ============================================================================
-# 本文件列出项目所有用到的大模型，按功能分类（Embedding / Rerank / OCR）。
-# 所有模型配置与 application.yml 保持相同的配置前缀，可直接合并生效。
+# 本文件列出项目所有用到的大模型，统一通过 spring.ai.platform.models 声明。
+# 通过 category（类别）+ protocol（协议）路由到对应适配器，支持动态切换。
 # API Key 等敏感信息请按环境填写。
 # ============================================================================
 
-rag:
-  # ==================== Embedding 向量化模型 ====================
-  embedding:
-    # 默认模型类型: tongyi / bge-m3 / openai
-    type: bge-m3
+spring:
+  ai:
+    platform:
+      models:
+        # ==================== Embedding 向量化模型 ====================
+        # BAAI/bge-m3 — 硅基流动（默认）
+        bge-m3:
+          category: EMBEDDING
+          protocol: OPENAI
+          base-url: https://api.siliconflow.cn/v1
+          api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+          model-name: BAAI/bge-m3
+        # Qwen/Qwen3-Embedding-0.6B — 硅基流动
+        tongyi:
+          category: EMBEDDING
+          protocol: OPENAI
+          base-url: https://api.siliconflow.cn/v1
+          api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+          model-name: Qwen/Qwen3-Embedding-0.6B
+        # text-embedding-3-small — OpenAI 官方
+        openai:
+          category: EMBEDDING
+          protocol: OPENAI
+          base-url: https://api.openai.com/v1
+          api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          model-name: text-embedding-3-small
 
-    # BAAI/bge-m3 — 硅基流动
+        # ==================== Rerank 重排序模型 ====================
+        # Qwen/Qwen3-Reranker — 硅基流动（候选池放大、限流参数通过 extensions 传递）
+        qwen3-rerank:
+          category: RERANK
+          protocol: OPENAI
+          base-url: https://api.siliconflow.cn/v1
+          api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+          model-name: Qwen/Qwen3-Reranker
+          extensions:
+            batch-size: 20
+            max-qps: 5
+            candidate-multiplier: 3
+
+        # ==================== OCR 识别模型 ====================
+        # deepseek-ai/DeepSeek-OCR — 硅基流动（OCR 走自研 OpenAiClient 直连）
+        deepseek-ocr:
+          category: OCR
+          protocol: OPENAI
+          base-url: https://api.siliconflow.cn/v1
+          api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+          model-name: deepseek-ai/DeepSeek-OCR
+          extensions:
+            timeout-ms: 120000
+
+# ============================================================================
+# 以下为兼容旧链路保留的配置（KbConfigService 解析 vectorDim / OCR parser 读取）
+# 后续将逐步迁移到 spring.ai.platform.models.extensions 后删除
+# ============================================================================
+rag:
+  # ---------- Embedding 向量维度（供 Weaviate 集合配置，与模型输出维度一致） ----------
+  embedding:
+    type: bge-m3
     bge-m3:
       api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
       base-url: https://api.siliconflow.cn/v1
       model: BAAI/bge-m3
       dim: 1024
-
-    # Qwen/Qwen3-Embedding-0.6B — 硅基流动
     tongyi:
       api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
       base-url: https://api.siliconflow.cn/v1
       model: Qwen/Qwen3-Embedding-0.6B
       dim: 1024
-
-    # text-embedding-3-small — OpenAI 官方
     openai:
       api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
       base-url: https://api.openai.com/v1
       model: text-embedding-3-small
       dim: 1536
 
-  # ==================== Rerank 重排序模型 ====================
-  rerank:
-    # 是否启用精排（默认关闭，仅 HYBRID 模式生效）
-    enabled: false
-    # 重排模型类型标识（首期固定 qwen3-reranker）
-    model-type: qwen3-reranker
-    # Qwen/Qwen3-Reranker — 硅基流动
-    model-name: Qwen/Qwen3-Reranker
-    base-url: https://api.siliconflow.cn/v1
-    # 候选池放大倍数
-    candidate-multiplier: 3
-    # 单批最大文档数（超过时自动分批）
-    batch-size: 20
-    # 连接/读取超时（秒）
-    connect-timeout-seconds: 30
-    read-timeout-seconds: 60
-    # 每秒最大调用次数（限流保护）
-    max-qps: 5
-
-  # ==================== OCR 识别模型 ====================
+  # ---------- OCR 识别模型（DeepSeekOcrParser / TikaOcrMixedParser 直连读取） ----------
   deepseek-ocr:
-    # deepseek-ai/DeepSeek-OCR — 硅基流动
     api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
     base-url: https://api.siliconflow.cn/v1
     model: deepseek-ai/DeepSeek-OCR
-    # 远程调用超时（毫秒）
     timeout-ms: 120000

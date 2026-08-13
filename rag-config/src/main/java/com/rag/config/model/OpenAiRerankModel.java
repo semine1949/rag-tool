@@ -57,10 +57,9 @@ public class OpenAiRerankModel implements RerankModel {
         }
 
         // 复用 OpenAiClient 的 HTTP 能力（内置限流 + 分批）
-        int batchSize = config.getExtensions() != null && config.getExtensions().containsKey("batchSize")
-                ? ((Number) config.getExtensions().get("batchSize")).intValue() : 20;
-        int maxQps = config.getExtensions() != null && config.getExtensions().containsKey("maxQps")
-                ? ((Number) config.getExtensions().get("maxQps")).intValue() : 5;
+        // 注意：extensions 的 key 由 YAML 原样绑定（kebab-case），此处按 kebab-case 读取
+        int batchSize = getIntExtension("batch-size", 20);
+        int maxQps = getIntExtension("max-qps", 5);
 
         List<Document> reranked = openAiClient.rerank(
                 config.getBaseUrl(), config.getApiKey(), config.getModelName(),
@@ -86,5 +85,23 @@ public class OpenAiRerankModel implements RerankModel {
             return results.subList(0, topN);
         }
         return results;
+    }
+
+    /**
+     * 从 extensions 扩展参数中安全读取整数配置。
+     *
+     * @param key          扩展参数 key（kebab-case，与 YAML 一致）
+     * @param defaultValue 默认值
+     * @return 读取到的整数；不存在或非数字时返回默认值
+     */
+    private int getIntExtension(String key, int defaultValue) {
+        if (config.getExtensions() == null) {
+            return defaultValue;
+        }
+        Object value = config.getExtensions().get(key);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return defaultValue;
     }
 }
