@@ -1,0 +1,62 @@
+# ============================================================================
+# RAG向量入库工具 - 大模型配置清单
+# ============================================================================
+# 本文件列出项目所有用到的大模型，按功能分类（Embedding / Rerank / OCR）。
+# 所有模型配置与 application.yml 保持相同的配置前缀，可直接合并生效。
+# API Key 等敏感信息请按环境填写。
+# ============================================================================
+
+rag:
+  # ==================== Embedding 向量化模型 ====================
+  embedding:
+    # 默认模型类型: tongyi / bge-m3 / openai
+    type: bge-m3
+
+    # BAAI/bge-m3 — 硅基流动
+    bge-m3:
+      api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+      base-url: https://api.siliconflow.cn/v1
+      model: BAAI/bge-m3
+      dim: 1024
+
+    # Qwen/Qwen3-Embedding-0.6B — 硅基流动
+    tongyi:
+      api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+      base-url: https://api.siliconflow.cn/v1
+      model: Qwen/Qwen3-Embedding-0.6B
+      dim: 1024
+
+    # text-embedding-3-small — OpenAI 官方
+    openai:
+      api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      base-url: https://api.openai.com/v1
+      model: text-embedding-3-small
+      dim: 1536
+
+  # ==================== Rerank 重排序模型 ====================
+  rerank:
+    # 是否启用精排（默认关闭，仅 HYBRID 模式生效）
+    enabled: false
+    # 重排模型类型标识（首期固定 qwen3-reranker）
+    model-type: qwen3-reranker
+    # Qwen/Qwen3-Reranker — 硅基流动
+    model-name: Qwen/Qwen3-Reranker
+    base-url: https://api.siliconflow.cn/v1
+    # 候选池放大倍数
+    candidate-multiplier: 3
+    # 单批最大文档数（超过时自动分批）
+    batch-size: 20
+    # 连接/读取超时（秒）
+    connect-timeout-seconds: 30
+    read-timeout-seconds: 60
+    # 每秒最大调用次数（限流保护）
+    max-qps: 5
+
+  # ==================== OCR 识别模型 ====================
+  deepseek-ocr:
+    # deepseek-ai/DeepSeek-OCR — 硅基流动
+    api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+    base-url: https://api.siliconflow.cn/v1
+    model: deepseek-ai/DeepSeek-OCR
+    # 远程调用超时（毫秒）
+    timeout-ms: 120000

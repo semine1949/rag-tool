@@ -6,6 +6,7 @@ import com.rag.auth.service.*;
 import com.rag.interceptor.JwtAuthInterceptor;
 import com.rag.common.chunker.ChunkStrategyFactory;
 import com.rag.common.entity.config.EmbeddingProperties;
+import com.rag.common.client.OpenAiClient;
 import com.rag.config.factory.EmbeddingModelFactory;
 import com.rag.config.factory.VectorStoreRegistry;
 import com.rag.config.rerank.RerankStrategyFactory;
@@ -32,7 +33,11 @@ import java.util.concurrent.Executor;
 import java.util.function.Function;
 
 /**
- * 核心Bean配置（Spring AI 重构版）
+ * 核心Bean配置（Spring AI 重构版）。
+ * <p>
+ * 使用统一的 {@link OpenAiClient} 封装所有 OpenAI 兼容协议调用，
+ * 替代原有的 {@code OpenAiCompatibleEmbeddingModel} / {@code Qwen3RerankStrategy} / {@code DeepSeekOcrClient}。
+ * </p>
  */
 @Configuration
 @MapperScan("com.rag.auth.mapper")
@@ -53,6 +58,20 @@ public class RagCoreConfig implements WebMvcConfigurer {
         return executor;
     }
 
+    // ==================== 统一 OpenAI 兼容客户端 ====================
+
+    /**
+     * 统一 OpenAI 兼容协议客户端 Bean。
+     * <p>
+     * 封装所有大模型 HTTP 调用（Embedding / Rerank / OCR），
+     * 注入到工厂类和解析器中，替代原有的多个独立客户端。
+     * </p>
+     */
+    @Bean
+    public OpenAiClient openAiClient() {
+        return new OpenAiClient();
+    }
+
     // ==================== 文档解析器配置 ====================
 
     @Value("${rag.deepseek-ocr.api-key:}")
@@ -68,21 +87,18 @@ public class RagCoreConfig implements WebMvcConfigurer {
     private long dsOcrTimeoutMs;
 
     @Bean
-    public DeepSeekOcrClient deepSeekOcrClient() {
-        return new DeepSeekOcrClient(dsOcrApiKey, dsOcrBaseUrl, dsOcrModel, dsOcrTimeoutMs);
-    }
-
-    @Bean
-    public DocumentParseFactory documentParseFactory(DeepSeekOcrClient deepSeekOcrClient) {
+    public DocumentParseFactory documentParseFactory(OpenAiClient openAiClient) {
         Map<com.rag.common.enums.FileTypeEnum, Function<File, DocumentReader>> suppliers =
                 new EnumMap<>(com.rag.common.enums.FileTypeEnum.class);
 
         // 策略1：文本类型 → Apache Tika
         Function<File, DocumentReader> tikaReader = f -> new TikaDocumentReader(new FileSystemResource(f));
         // 策略2：文本+图片混合文档 → Tika 文本提取 + 内嵌图片多模态 OCR
-        Function<File, DocumentReader> mixedReader = f -> new TikaOcrMixedParser(deepSeekOcrClient, f);
+        Function<File, DocumentReader> mixedReader = f ->
+                new TikaOcrMixedParser(openAiClient, dsOcrBaseUrl, dsOcrApiKey, dsOcrModel, dsOcrTimeoutMs, f);
         // 策略3：纯图片 → 多模态 OCR
-        Function<File, DocumentReader> ocrReader = f -> new DeepSeekOcrParser(deepSeekOcrClient, f);
+        Function<File, DocumentReader> ocrReader = f ->
+                new DeepSeekOcrParser(openAiClient, dsOcrBaseUrl, dsOcrApiKey, dsOcrModel, dsOcrTimeoutMs, f);
         // 策略4：Excel → 已有 ExcelParser
         Function<File, DocumentReader> excelReader = f -> new ExcelParser(f);
 
@@ -126,8 +142,9 @@ public class RagCoreConfig implements WebMvcConfigurer {
     // ==================== Embedding / 向量库（Spring AI） ====================
 
     @Bean
-    public EmbeddingModelFactory embeddingModelFactory(EmbeddingProperties embeddingProperties) {
-        return new EmbeddingModelFactory(embeddingProperties);
+    public EmbeddingModelFactory embeddingModelFactory(EmbeddingProperties embeddingProperties,
+                                                       OpenAiClient openAiClient) {
+        return new EmbeddingModelFactory(embeddingProperties, openAiClient);
     }
 
     @Value("${rag.weaviate.url:}")
@@ -152,8 +169,8 @@ public class RagCoreConfig implements WebMvcConfigurer {
      * </p>
      */
     @Bean
-    public RerankStrategyFactory rerankStrategyFactory() {
-        return new RerankStrategyFactory();
+    public RerankStrategyFactory rerankStrategyFactory(OpenAiClient openAiClient) {
+        return new RerankStrategyFactory(openAiClient);
     }
 
     // ==================== 密码加密 ====================

@@ -1,6 +1,7 @@
 package com.rag.common.parser.impl;
 
 import com.rag.common.exception.RagException;
+import com.rag.common.client.OpenAiClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
@@ -22,6 +23,7 @@ import java.util.UUID;
  * 不引入任何本地渲染/解析库：文件字节流直接交由远程多模态模型渲染并识别。
  * <p>
  * 实现 Spring AI {@link DocumentReader} 接口，返回承载全文的 {@link Document}。
+ * OCR 调用统一委托给 {@link OpenAiClient#ocr}。
  */
 public class DeepSeekOcrParser implements DocumentReader {
 
@@ -47,11 +49,23 @@ public class DeepSeekOcrParser implements DocumentReader {
             Map.entry("htm", "text/html")
     );
 
-    private final DeepSeekOcrClient deepSeekOcrClient;
+    /** 统一 OpenAI 兼容客户端 */
+    private final OpenAiClient openAiClient;
+    /** OCR 配置：baseUrl / apiKey / model / timeoutMs */
+    private final String ocrBaseUrl;
+    private final String ocrApiKey;
+    private final String ocrModel;
+    private final long ocrTimeoutMs;
     private final File file;
 
-    public DeepSeekOcrParser(DeepSeekOcrClient deepSeekOcrClient, File file) {
-        this.deepSeekOcrClient = deepSeekOcrClient;
+    public DeepSeekOcrParser(OpenAiClient openAiClient,
+                             String ocrBaseUrl, String ocrApiKey, String ocrModel, long ocrTimeoutMs,
+                             File file) {
+        this.openAiClient = openAiClient;
+        this.ocrBaseUrl = ocrBaseUrl;
+        this.ocrApiKey = ocrApiKey;
+        this.ocrModel = ocrModel;
+        this.ocrTimeoutMs = ocrTimeoutMs;
         this.file = file;
     }
 
@@ -60,7 +74,7 @@ public class DeepSeekOcrParser implements DocumentReader {
         try {
             byte[] bytes = Files.readAllBytes(file.toPath());
             String ext = getExtension(file.getName());
-            String text = deepSeekOcrClient.ocr(bytes, mimeOf(ext));
+            String text = openAiClient.ocr(ocrBaseUrl, ocrApiKey, ocrModel, bytes, mimeOf(ext), ocrTimeoutMs);
             if (text.isEmpty()) {
                 log.warn("DeepSeek-OCR 未识别到文本: {}", file.getName());
             }

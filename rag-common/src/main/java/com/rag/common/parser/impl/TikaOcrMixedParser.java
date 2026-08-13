@@ -1,6 +1,7 @@
 package com.rag.common.parser.impl;
 
 import com.rag.common.exception.RagException;
+import com.rag.common.client.OpenAiClient;
 import org.apache.tika.exception.TikaException;
 import org.apache.tika.extractor.EmbeddedDocumentExtractor;
 import org.apache.tika.metadata.Metadata;
@@ -28,7 +29,7 @@ import java.util.*;
  * <ol>
  *     <li>通过 Apache Tika {@link AutoDetectParser} 提取文本层</li>
  *     <li>通过 {@link EmbeddedDocumentExtractor} 截获内嵌图片（image/*）字节</li>
- *     <li>对每张内嵌图片调用 {@link DeepSeekOcrClient} 做 OCR</li>
+ *     <li>对每张内嵌图片调用 {@link OpenAiClient#ocr} 做 OCR</li>
  *     <li>产出：1 个文本 Document + 每个内嵌图片 1 个 OCR Document</li>
  * </ol>
  * <p>
@@ -49,10 +50,22 @@ public class TikaOcrMixedParser implements DocumentReader {
     );
 
     private final File file;
-    private final DeepSeekOcrClient ocrClient;
+    /** 统一 OpenAI 兼容客户端 */
+    private final OpenAiClient openAiClient;
+    /** OCR 配置参数 */
+    private final String ocrBaseUrl;
+    private final String ocrApiKey;
+    private final String ocrModel;
+    private final long ocrTimeoutMs;
 
-    public TikaOcrMixedParser(DeepSeekOcrClient ocrClient, File file) {
-        this.ocrClient = ocrClient;
+    public TikaOcrMixedParser(OpenAiClient openAiClient,
+                              String ocrBaseUrl, String ocrApiKey, String ocrModel, long ocrTimeoutMs,
+                              File file) {
+        this.openAiClient = openAiClient;
+        this.ocrBaseUrl = ocrBaseUrl;
+        this.ocrApiKey = ocrApiKey;
+        this.ocrModel = ocrModel;
+        this.ocrTimeoutMs = ocrTimeoutMs;
         this.file = file;
     }
 
@@ -90,7 +103,7 @@ public class TikaOcrMixedParser implements DocumentReader {
             for (int i = 0; i < images.size(); i++) {
                 ImageData img = images.get(i);
                 try {
-                    String ocrText = ocrClient.ocr(img.bytes, img.mimeType);
+                    String ocrText = openAiClient.ocr(ocrBaseUrl, ocrApiKey, ocrModel, img.bytes, img.mimeType, ocrTimeoutMs);
                     if (!ocrText.isEmpty()) {
                         Map<String, Object> imgMeta = buildBaseMetadata("image_ocr");
                         imgMeta.put("contentType", "image_ocr");
@@ -110,7 +123,7 @@ public class TikaOcrMixedParser implements DocumentReader {
                 String ext = getExtension(file.getName());
                 String mime = EXT_MIME_MAP.getOrDefault(ext, "application/octet-stream");
                 byte[] fileBytes = Files.readAllBytes(file.toPath());
-                String ocrText = ocrClient.ocr(fileBytes, mime);
+                String ocrText = openAiClient.ocr(ocrBaseUrl, ocrApiKey, ocrModel, fileBytes, mime, ocrTimeoutMs);
                 if (!ocrText.isEmpty()) {
                     Map<String, Object> fallbackMeta = buildBaseMetadata("fallback_ocr");
                     fallbackMeta.put("contentType", "fallback_ocr");

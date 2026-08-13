@@ -2,12 +2,14 @@
 # RAG向量入库工具 - 应用配置
 # ============================================================================
 # 本文件中所有标注 TODO 的配置项需要根据实际环境填写
+# 模型配置清单见 application.public.yml
 # ============================================================================
 
-server:
-  port: 8080
-
+# 导入公共模型配置
 spring:
+  config:
+    import:
+      - classpath:application.public.yml
   application:
     name: rag-vector-tool
   servlet:
@@ -21,6 +23,9 @@ spring:
     password: semine123456
     driver-class-name: com.mysql.cj.jdbc.Driver
 
+server:
+  port: 8080
+
 # ==================== MyBatis 配置 ====================
 mybatis:
   mapper-locations: classpath*:mapper/**/*.xml
@@ -31,51 +36,6 @@ mybatis:
 
 # ==================== RAG核心配置 ====================
 rag:
-  # ---------- DeepSeek-OCR 配置（OpenAI 兼容远程端点，图片/文档统一识别） ----------
-  deepseek-ocr:
-    api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
-    # 硅基流动 Base URL（客户端会自动追加 /chat/completions）
-    base-url: https://api.siliconflow.cn/v1
-    # 远程部署的 DeepSeek-OCR 模型名
-    model: deepseek-ai/DeepSeek-OCR
-    # 远程调用超时（毫秒）
-    timeout-ms: 120000
-
-  # ---------- Embedding模型配置（远程 API，均走 OpenAI 兼容协议） ----------
-  embedding:
-    # 默认模型类型: tongyi / bge-m3 / openai
-    type: bge-m3
-
-    # Qwen3 Embedding 配置（当模型名含 qwen/tongyi 时生效，走硅基流动）
-    tongyi:
-      api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
-      # 硅基流动 Base URL（客户端会自动追加 /embeddings）
-      base-url: https://api.siliconflow.cn/v1
-      # 硅基流动模型名
-      model: Qwen/Qwen3-Embedding-0.6B
-      # 向量维度（需与 Weaviate 集合维度一致）
-      dim: 1024
-
-    # BGE-M3 配置（当模型名含 bge 时生效，走硅基流动）
-    bge-m3:
-      api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
-      # 硅基流动 Base URL（客户端会自动追加 /embeddings）
-      base-url: https://api.siliconflow.cn/v1
-      # 模型名称
-      model: BAAI/bge-m3
-      # 向量维度（需与 Weaviate 集合维度一致）
-      dim: 1024
-
-    # OpenAI 兼容配置（当模型名含 text-embedding/openai 时生效）
-    openai:
-      api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-      # OpenAI 兼容 Base URL（客户端会自动追加 /embeddings）
-      base-url: https://api.openai.com/v1
-      # 模型名称
-      model: text-embedding-3-small
-      # 向量维度（text-embedding-3-small=1536）
-      dim: 1536
-
   # ---------- Weaviate向量库配置 ----------
   weaviate:
     url: http://192.168.71.12:8080
@@ -104,26 +64,6 @@ rag:
       # BM25 检索默认权重
       bm25-weight: 0.5
 
-  # ---------- 重排配置（Qwen3-Rerank 精排，默认关闭） ----------
-  rerank:
-    # 是否启用精排（默认关闭，仅 HYBRID 模式生效）
-    enabled: false
-    # 重排模型类型标识（首期固定 qwen3-reranker）
-    model-type: qwen3-reranker
-    # 模型名称（硅基流动 Qwen3-Reranker）
-    model-name: Qwen/Qwen3-Reranker
-    # Rerank API Base URL（复用硅基流动端点）
-    base-url: https://api.siliconflow.cn/v1
-    # 候选池放大倍数（召回 topK * multiplier 条送入精排）
-    candidate-multiplier: 3
-    # 单批最大文档数（超过时自动分批）
-    batch-size: 20
-    # 连接超时（秒）
-    connect-timeout-seconds: 30
-    # 读取超时（秒）
-    read-timeout-seconds: 60
-    # 每秒最大调用次数（限流保护）
-    max-qps: 5
 
   # ---------- 鉴权与安全配置（需求6-7） ----------
   auth:
