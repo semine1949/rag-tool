@@ -1,4 +1,3 @@
-# ============================================================================
 # RAG向量入库工具 - 应用配置
 # ============================================================================
 # 本文件中所有标注 TODO 的配置项需要根据实际环境填写
@@ -22,6 +21,14 @@ spring:
     username: semine
     password: semine123456
     driver-class-name: com.mysql.cj.jdbc.Driver
+  # ---------- Redis（问答多轮会话存储） ----------
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      database: 0
+      timeout: 5000ms
 
 server:
   port: 8080
@@ -64,6 +71,38 @@ rag:
       # BM25 检索默认权重
       bm25-weight: 0.5
 
+
+  # ---------- 问答（Chat）全局配置（知识库级配置可覆盖，优先级：请求参数 > 知识库配置 > 此处全局默认） ----------
+  chat:
+    # 问答能力全局总开关（关闭时所有问答接口返回禁用提示，对纯检索接口零影响）
+    enabled: true
+    # 默认对话模型（spring.ai.platform.models 中的逻辑模型名，须为 CHAT 类别）
+    chat-model: qwen-turbo
+    # 查询改写开关（多轮上下文补全 + 复杂查询优化，失败自动降级为原始查询）
+    rewrite-enabled: true
+    # 查询改写模型（为空时复用 chat-model）
+    rewrite-model:
+    # 上下文窗口 Token 预算（召回片段按相似度优先级截断）
+    context-window-tokens: 6000
+    # 多轮对话历史最大保留轮次（一轮 = 一问一答）
+    max-history-rounds: 10
+    # 历史上下文 Token 总量上限（与轮次双重裁剪）
+    history-max-tokens: 3000
+    # 会话过期时间（秒），超时未访问自动清理
+    session-ttl-seconds: 3600
+    # 临时上传文档生命周期（秒），随会话清理或超时自动清理
+    temp-doc-ttl-seconds: 1800
+    # 临时文档最大数量（单次问答请求）
+    temp-doc-max-count: 5
+    # 输入输出内容安全校验开关
+    safety-check-enabled: true
+    # 默认系统提示词（知识库级自定义提示词可覆盖）
+    default-system-prompt: |
+      你是一个严谨的知识库问答助手。请严格遵守以下规则：
+      1. 仅基于下方提供的参考资料回答用户问题，禁止编造资料中不存在的信息。
+      2. 引用资料内容时，在引用处标注引用编号，格式为 [n]，n 与资料编号一一对应。
+      3. 若参考资料不足以回答问题，请明确告知用户“根据现有资料无法回答”，不要猜测。
+      4. 回答使用与用户提问相同的语言，保持简洁、准确、有条理。
 
   # ---------- 鉴权与安全配置（需求6-7） ----------
   auth:

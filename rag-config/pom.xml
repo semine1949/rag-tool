@@ -51,6 +51,11 @@
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>okhttp</artifactId>
         </dependency>
+        <!-- Redis 会话存储（问答多轮对话上下文管理） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
         <!-- Jackson JSON 序列化 -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

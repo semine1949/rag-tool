@@ -46,6 +46,18 @@ spring:
             max-qps: 5
             candidate-multiplier: 3
 
+        # ==================== Chat 对话模型（问答链路） ====================
+        # Qwen/Qwen2.5-7B-Instruct — 硅基流动（查询改写 + 回答生成共用）
+        qwen-turbo:
+          category: CHAT
+          protocol: OPENAI
+          base-url: https://api.siliconflow.cn/v1
+          api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+          model-name: Qwen/Qwen2.5-7B-Instruct
+          temperature: 0.7
+          max-tokens: 2048
+          stream-enabled: true
+
         # ==================== OCR 识别模型 ====================
         # deepseek-ai/DeepSeek-OCR — 硅基流动（OCR 走自研 OpenAiClient 直连）
         deepseek-ocr:

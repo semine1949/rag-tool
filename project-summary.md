@@ -146,7 +146,109 @@ rag-vector-tool (父 POM)
 - 纯扫描件兜底：若 Tika + 内嵌图片 OCR 均无产出，回退为全量文档 OCR
 
 ### 3.2 Chunk 分块策略
+package com.rag.config.chat;
 
+import com.rag.common.exception.RagException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.regex.Pattern;
+
+/**
+ * 输入输出内容安全校验器。
+ * <p>
+ * 职责：
+ * <ul>
+ *   <li>输入校验：拦截违规查询关键词与超长输入</li>
+ *   <li>提示词注入防护：识别并拒绝试图套取系统提示词 / 内部配置的查询</li>
+ *   <li>输出校验：拦截生成内容中的违规关键词</li>
+ * </ul>
+ * 校验失败抛出 {@link RagException}（错误码 SAFETY_BLOCKED），由上层统一处理。
+ * </p>
+ */
+public class SafetyChecker {
+
+    private static final Logger log = LoggerFactory.getLogger(SafetyChecker.class);
+
+    /** 单次查询最大长度（字符），超长直接拒绝 */
+    private static final int MAX_QUERY_LENGTH = 4000;
+
+    /** 基础违规关键词（可按需扩展为外部配置） */
+    private static final List<String> BLOCKED_KEYWORDS = List.of(
+            "违法", "暴恐", "毒品交易");
+
+    /** 提示词注入特征：试图套取系统提示词或内部配置 */
+    private static final Pattern INJECTION_PATTERN = Pattern.compile(
+            "(忽略|无视|忘记).{0,10}(之前|上面|以上|系统).{0,10}(指令|提示词|规则)"
+                    + "|(输出|打印|显示|复述|泄露).{0,10}(系统提示词|system\\s*prompt|内部配置|api\\s*key)",
+            Pattern.CASE_INSENSITIVE);
+
+    /**
+     * 校验用户输入查询。
+     *
+     * @param query 用户查询
+     * @throws RagException 校验不通过时抛出（SAFETY_BLOCKED）
+     */
+    public void checkInput(String query) {
+        if (query == null || query.isBlank()) {
+            return;
+        }
+        if (query.length() > MAX_QUERY_LENGTH) {
+            throw new RagException("SAFETY_BLOCKED", "查询内容超长，请精简后重试");
+        }
+        // 提示词注入防护
+        if (INJECTION_PATTERN.matcher(query).find()) {
+            log.warn("检测到疑似提示词注入查询，已拦截");
+            throw new RagException("SAFETY_BLOCKED", "查询内容不合规");
+        }
+        // 违规关键词拦截
+        for (String keyword : BLOCKED_KEYWORDS) {
+            if (query.contains(keyword)) {
+                log.warn("查询命中违规关键词 [{}]，已拦截", keyword);
+                throw new RagException("SAFETY_BLOCKED", "查询内容不合规");
+            }
+        }
+    }
+
+    /**
+     * 校验模型输出内容（违规时返回兜底文案，不抛异常，保障流式输出可收尾）。
+     *
+     * @param answer 模型生成的完整回答
+     * @return 校验通过返回原文；命中违规返回兜底提示
+     */
+    public String checkOutput(String answer) {
+        if (answer == null || answer.isBlank()) {
+            return answer;
+        }
+        for (String keyword : BLOCKED_KEYWORDS) {
+            if (answer.contains(keyword)) {
+                log.warn("生成内容命中违规关键词 [{}]，已替换为兜底文案", keyword);
+                return "抱歉，生成的内容包含不合规信息，已被拦截。请调整问题后重试。";
+            }
+        }
+        return answer;
+    }
+
+    /**
+     * 提示词注入防护：清洗用户内容中可能干扰系统提示词的指令片段。
+     * <p>用于将用户查询/上传文档内容嵌入 Prompt 前的预处理，
+     * 去除常见的角色覆盖指令前缀。</p>
+     *
+     * @param userContent 用户侧内容
+     * @return 清洗后的内容
+     */
+    public String sanitize(String userContent) {
+        if (userContent == null) {
+            return null;
+        }
+        // 去除常见的角色覆盖指令（如"你现在是...""忽略之前的指令"）
+        return userContent
+                .replaceAll("(?i)(忽略|无视|忘记)(之前|上面|以上)(的)?(所有)?(指令|提示词|规则)", "")
+                .replaceAll("(?i)you\\s+are\\s+now\\s+", "")
+                .replaceAll("(?i)ignore\\s+(all\\s+)?previous\\s+instructions", "");
+    }
+}
 | 策略 | 类 | 模式标识 | 默认参数 | 算法描述 |
 |------|-----|---------|---------|---------|
 | **text-model** | `SizeTextSplitter` | `text_model` | delimiter=`\n`, maxTokens=1024, chunkOverlap=50 | 自然分隔符优先（按 `\n` 切分，片段拼接），超长片段硬截断（含重叠） |
