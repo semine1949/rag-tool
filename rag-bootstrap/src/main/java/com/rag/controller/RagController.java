@@ -3,7 +3,8 @@ package com.rag.controller;
 import com.rag.auth.context.RequestContext;
 import com.rag.auth.service.KbAccessService;
 import com.rag.service.FileProcessResult;
-import com.rag.service.RagToolService;
+import com.rag.service.RagQueryService;
+import com.rag.service.RagStorageService;
 import com.rag.common.chunker.SplitterConfig;
 import com.rag.common.entity.config.SearchConfig;
 import com.rag.common.enums.SearchMode;
@@ -27,11 +28,13 @@ import java.util.concurrent.CompletableFuture;
 public class RagController {
 
     private static final Logger log = LoggerFactory.getLogger(RagController.class);
-    private final RagToolService ragToolService;
+    private final RagStorageService ragStorageService;
+    private final RagQueryService ragQueryService;
     private final KbAccessService kbAccessService;
 
-    public RagController(RagToolService ragToolService, KbAccessService kbAccessService) {
-        this.ragToolService = ragToolService;
+    public RagController(RagStorageService ragStorageService, RagQueryService ragQueryService, KbAccessService kbAccessService) {
+        this.ragStorageService = ragStorageService;
+        this.ragQueryService = ragQueryService;
         this.kbAccessService = kbAccessService;
     }
 
@@ -51,7 +54,7 @@ public class RagController {
             Long userId = requireAuth();
             kbAccessService.checkUploadPermission(userId, kbId);
             // 默认兜底：config 传 null，工厂按 chunkStrategy 采用默认参数构造 splitter
-            FileProcessResult result = ragToolService.processFile(file, kbId, null, chunkStrategy, null);
+            FileProcessResult result = ragStorageService.processFile(file, kbId, null, chunkStrategy, null);
             return ResponseEntity.ok(Map.of("code", 200, "data", result));
         } catch (Exception e) {
             log.error("文件上传处理失败", e);
@@ -80,7 +83,7 @@ public class RagController {
             config.setDelimiter(delimiter);
             config.setMaxTokens(maxTokens);
             config.setChunkOverlap(chunkOverlap);
-            FileProcessResult result = ragToolService.processFile(
+            FileProcessResult result = ragStorageService.processFile(
                     file, kbId, null, "TEXT_MODEL", config);
             return ResponseEntity.ok(Map.of("code", 200, "data", result));
         } catch (Exception e) {
@@ -114,7 +117,7 @@ public class RagController {
             config.setChildSeparator(childSeparator);
             config.setChildMaxTokens(childMaxTokens);
             config.setParentMode(parentMode);
-            FileProcessResult result = ragToolService.processFile(
+            FileProcessResult result = ragStorageService.processFile(
                     file, kbId, null, "HIERARCHICAL_MODEL", config);
             return ResponseEntity.ok(Map.of("code", 200, "data", result));
         } catch (Exception e) {
@@ -142,7 +145,7 @@ public class RagController {
             String chunkStrategy = request != null ? request.getChunkStrategy() : null;
             SplitterConfig config = buildSplitterConfig(request);
             CompletableFuture<List<FileProcessResult>> future =
-                    ragToolService.batchProcessFiles(files, kbId, chunkStrategy, config);
+                    ragStorageService.batchProcessFiles(files, kbId, chunkStrategy, config);
             return ResponseEntity.ok(Map.of("code", 200, "msg", "批量任务已提交"));
         } catch (Exception e) {
             log.error("批量上传处理失败", e);
@@ -178,7 +181,7 @@ public class RagController {
         try {
             Long userId = requireAuth();
             kbAccessService.checkUploadPermission(userId, request.getKbId());
-            List<FileProcessResult> results = ragToolService.processDirectory(
+            List<FileProcessResult> results = ragStorageService.processDirectory(
                     request.getDirPath(), request.getKbId());
             return ResponseEntity.ok(Map.of("code", 200, "data", results));
         } catch (Exception e) {
@@ -253,7 +256,7 @@ public class RagController {
             }
 
             SearchConfig config = configBuilder.build();
-            List<FileProcessResult> results = ragToolService.search(query, kbId, topK, config);
+            List<FileProcessResult> results = ragQueryService.search(query, kbId, topK, config);
             return ResponseEntity.ok(Map.of("code", 200, "data", results));
         } catch (Exception e) {
             log.error("检索失败", e);
@@ -280,7 +283,7 @@ public class RagController {
             for (Long kbId : request.getKbIds()) {
                 kbAccessService.checkViewPermission(userId, kbId);
             }
-            List<com.rag.service.MultiSearchResult> results = ragToolService.multiSearch(request);
+            List<com.rag.service.MultiSearchResult> results = ragQueryService.multiSearch(request);
             return ResponseEntity.ok(Map.of("code", 200, "data", results));
         } catch (Exception e) {
             log.error("多知识库检索失败", e);
@@ -296,7 +299,7 @@ public class RagController {
         try {
             Long userId = requireAuth();
             kbAccessService.checkViewPermission(userId, kbId);
-            return ResponseEntity.ok(Map.of("code", 200, "data", ragToolService.listDocuments(kbId)));
+            return ResponseEntity.ok(Map.of("code", 200, "data", ragQueryService.listDocuments(kbId)));
         } catch (Exception e) {
             log.error("文档列表查询失败", e);
             return ResponseEntity.badRequest().body(Map.of("code", 500, "msg", e.getMessage()));

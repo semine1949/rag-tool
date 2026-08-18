@@ -9,6 +9,7 @@ import com.rag.common.entity.config.EmbeddingProperties;
 import com.rag.common.client.OpenAiClient;
 import com.rag.config.factory.VectorStoreRegistry;
 import com.rag.config.properties.AiModelProperties;
+import com.rag.config.properties.ChatProperties;
 import com.rag.common.parser.DocumentParseFactory;
 import com.rag.common.parser.impl.*;
 import org.mybatis.spring.annotation.MapperScan;
@@ -40,7 +41,7 @@ import java.util.function.Function;
  * </p>
  */
 @Configuration
-@EnableConfigurationProperties(AiModelProperties.class)
+@EnableConfigurationProperties({AiModelProperties.class, ChatProperties.class})
 @MapperScan("com.rag.auth.mapper")
 public class RagCoreConfig implements WebMvcConfigurer {
 
