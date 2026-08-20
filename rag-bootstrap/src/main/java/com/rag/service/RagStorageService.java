@@ -3,7 +3,7 @@ package com.rag.service;
 import com.rag.auth.context.RequestContext;
 import com.rag.auth.mapper.DocChunkMapper;
 import com.rag.auth.mapper.KbDocumentMapper;
-import com.rag.auth.service.KbConfigService;
+import com.rag.service.KbConfigService;
 import com.rag.common.chunker.ChunkStrategyFactory;
 import com.rag.common.chunker.ParentChildTextSplitter;
 import com.rag.common.chunker.SizeTextSplitter;

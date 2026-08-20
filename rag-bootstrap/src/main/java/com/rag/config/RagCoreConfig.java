@@ -3,6 +3,7 @@ package com.rag.config;
 import com.rag.auth.jwt.JwtTokenProvider;
 import com.rag.auth.mapper.*;
 import com.rag.auth.service.*;
+import com.rag.service.KbConfigService;
 import com.rag.interceptor.JwtAuthInterceptor;
 import com.rag.common.chunker.ChunkStrategyFactory;
 import com.rag.common.entity.config.EmbeddingProperties;

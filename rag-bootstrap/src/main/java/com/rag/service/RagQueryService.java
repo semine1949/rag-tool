@@ -1,7 +1,7 @@
 package com.rag.service;
 
 import com.rag.auth.mapper.KbDocumentMapper;
-import com.rag.auth.service.KbConfigService;
+import com.rag.service.KbConfigService;
 import com.rag.controller.MultiSearchRequest;
 import com.rag.common.entity.config.EmbeddingConfig;
 import com.rag.common.entity.config.SearchConfig;

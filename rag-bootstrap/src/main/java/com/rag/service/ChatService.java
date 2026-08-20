@@ -1,7 +1,7 @@
 package com.rag.service;
 
 import com.rag.auth.context.RequestContext;
-import com.rag.auth.service.KbConfigService;
+import com.rag.service.KbConfigService;
 import com.rag.common.chat.ChatAnswer;
 import com.rag.common.chat.ChatMessage;
 import com.rag.common.chat.ChatSession;

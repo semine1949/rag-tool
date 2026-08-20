@@ -1,4 +1,4 @@
-package com.rag.auth.service;
+package com.rag.service;
 
 import com.rag.auth.mapper.KnowledgeBaseMapper;
 import com.rag.common.entity.config.EmbeddingConfig;
@@ -15,7 +15,7 @@ import java.util.Date;
 
 /**
  * 知识库配置服务（v2 重构）
- * <p>分片策略由 {@link com.rag.chunker.ChunkStrategyFactory} 依据 chunkStrategy + SplitterConfig
+ * <p>分片策略由 {@link com.rag.common.chunker.ChunkStrategyFactory} 依据 chunkStrategy + SplitterConfig
  * 统一判定构造，知识库仅保留 embedding_model 相关配置。</p>
  */
 @Service
