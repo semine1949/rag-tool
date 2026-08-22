@@ -28,6 +28,12 @@
         <dependency>
             <groupId>com.rag</groupId>
             <artifactId>rag-auth</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.rag</groupId>
+            <artifactId>rag-chat</artifactId>
+            <version>${project.version}</version>
         </dependency>
 
         <!-- Spring AI 基础接口（EmbeddingModel / VectorStore / Document / TextSplitter）随 rag-core 传递引入。

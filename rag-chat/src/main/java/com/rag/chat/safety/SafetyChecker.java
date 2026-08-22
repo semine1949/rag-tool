@@ -1,6 +1,6 @@
-package com.rag.config.chat;
+package com.rag.chat.safety;
 
-import com.rag.config.properties.ChatProperties;
+import com.rag.chat.config.ChatProperties;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;

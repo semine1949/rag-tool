@@ -1,4 +1,4 @@
-package com.rag.service;
+package com.rag.auth.service;
 
 import com.rag.auth.mapper.KnowledgeBaseMapper;
 import com.rag.common.entity.config.EmbeddingConfig;

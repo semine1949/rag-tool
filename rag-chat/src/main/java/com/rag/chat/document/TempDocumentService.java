@@ -1,8 +1,8 @@
-package com.rag.config.chat;
+package com.rag.chat.document;
 
 import com.rag.common.parser.DocumentParseFactory;
+import com.rag.chat.config.ChatProperties;
 import com.rag.config.factory.AiModelFactory;
-import com.rag.config.properties.ChatProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;

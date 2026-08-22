@@ -1,4 +1,4 @@
-package com.rag.config.chat;
+package com.rag.chat.assembler;
 
 import com.rag.common.chat.Citation;
 import org.springframework.ai.document.Document;

@@ -1,4 +1,4 @@
-package com.rag.config.chat;
+package com.rag.chat.store;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

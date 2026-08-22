@@ -1,9 +1,9 @@
-package com.rag.config.chat;
+package com.rag.chat.rewriter;
 
 import com.rag.common.chat.ChatMessage;
 import com.rag.common.chat.QueryRewriter;
+import com.rag.chat.config.ChatProperties;
 import com.rag.config.factory.AiModelFactory;
-import com.rag.config.properties.ChatProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;

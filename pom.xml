@@ -15,6 +15,7 @@
         <module>rag-common</module>
         <module>rag-config</module>
         <module>rag-auth</module>
+        <module>rag-chat</module>
         <module>rag-bootstrap</module>
     </modules>
 
