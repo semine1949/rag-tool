@@ -81,7 +81,7 @@ rag-vector-tool (父 POM)
 ### 2.3 RAG 完整链路（当前实现状态）
 
 ```
-文档上传 → 解析 → 分块(chunk) → 向量化 → 向量入库 → 检索(向量/BM25/混合) → 重排(可选) → 查询改写 → 上下文组装 → LLM生成 → 流式输出
+文档上传 → 解析 → 分块(chunk) → 向量化 → 向量入库 → 检索(向量/BM25/混合) → 重排(可选) → 查询改写 → 相似度过滤 → 上下文组装 → RAG Prompt约束 → LLM生成 → 流式输出
 ```
 
 | 步骤 | 当前实现 | 自研/第三方 | 状态 |
@@ -95,9 +95,11 @@ rag-vector-tool (父 POM)
 | 7. 检索 | 三模式（VECTOR_ONLY/BM25_ONLY/HYBRID）+ 多知识库联合检索 + 白名单过滤，topK 默认 5 | Weaviate + 自研 | ✅ 已实现 |
 | 8. 重排 Rerank | Qwen3-Reranker 精排（候选池放大→精排→topK 截断，仅 HYBRID 模式，异常自动降级） | 自研（OpenAiRerankModel） | ✅ 已实现 |
 | 9. 查询改写 | LlmQueryRewriter 基于会话历史进行指代消解与省略补全（改写失败自动降级为原始查询） | 自研 | ✅ 已实现 |
-| 10. 上下文组装 | ContextAssembler 按召回顺序编号 [1]..[n]，Token 预算耗尽时按相似度优先级截断 | 自研 | ✅ 已实现 |
-| 11. LLM 生成 | ChatGenerator 调用对话模型同步/流式生成回答，支持引用溯源，异常降级返回召回片段 | Spring AI + 自研 | ✅ 已实现 |
-| 12. 流式输出 | SSE 流式推送（citations → content → done/error），支持处理阶段进度事件 | 自研 | ✅ 已实现 |
+| 10. 相似度过滤 | SimilarityFilter 按 score 过滤低相关片段（默认阈值 0.5），过滤后为空触发无答案降级 | 自研 | ✅ 已实现 |
+| 11. 上下文组装 | ContextAssembler 按召回顺序编号 [1]..[n]，Token 预算耗尽时按相似度优先级截断 | 自研 | ✅ 已实现 |
+| 12. RAG Prompt 约束 | PromptTemplateResolver 根据场景（RAG/普通对话）自动加载系统提示词模板，内置引用标注、禁止编造等强制约束 | 自研 | ✅ 已实现 |
+| 13. LLM 生成 | ChatGenerator 调用对话模型同步/流式生成回答，支持引用溯源，异常降级返回召回片段 | Spring AI + 自研 | ✅ 已实现 |
+| 14. 流式输出 | SSE 流式推送（citations → content → done/error），done 后自动持久化 user + assistant 消息 | 自研 | ✅ 已实现 |
 
 ### 2.4 部署形态
 
@@ -235,7 +237,7 @@ rag-vector-tool (父 POM)
 | 元数据过滤 | 支持 Filter.Expression（如按 fileId 过滤删除旧记录） |
 | 权限过滤 | 检索入口逐库校验 READ 权限（multi-search 任一库无权限则阻断整个请求） |
 | 白名单过滤 | multi-search 支持按 docId 白名单后过滤（粗排之后、去重之前） |
-| 相似度阈值 | 无阈值过滤，Weaviate 返回所有结果 |
+| 相似度阈值 | SimilarityFilter 按 score 过滤（默认 0.5，可配置），过滤后为空触发无答案降级 |
 | 去重 | 入库时按 textHash 去重（existsByTextHash）；检索期跨库去重（三级 key：docId+chunkId → recordId → docId+textHash） |
 
 ---
@@ -261,11 +263,13 @@ Chat 模块承载**对话交互核心能力**，遵循三层架构设计：
 | ChatMessageService | `rag-chat/service/` | 顶层编排，协调会话+上下文+生成+持久化 |
 | ChatGenerator | `rag-chat/generator/` | 对话模型调用，支持同步与流式生成 |
 | ContextAssembler | `rag-chat/assembler/` | 召回片段按编号 [1]..[n] 组装，Token 预算截断 |
+| PromptTemplateResolver | `rag-chat/assembler/` | 根据场景（RAG/普通对话）自动选择系统提示词模板，内置引用标注、禁止编造等强制约束 |
 | LlmQueryRewriter | `rag-chat/rewriter/` | 基于会话历史的查询改写，携带最近 3 轮 |
 | RedisSessionStore | `rag-chat/store/` | 会话 Redis 存储，TTL 自动续期 |
 | SafetyChecker | `rag-chat/safety/` | 输入输出安全校验，提示词注入防护 |
 | TempDocumentService | `rag-chat/document/` | 临时文档解析、向量化、内存召回 |
-| ChatProperties | `rag-chat/config/` | 全局 Chat 配置（开关、模型、Token 预算、TTL） |
+| SimilarityFilter | `rag-config/retrieval/` | 相似度阈值过滤，统一覆盖单库/多库/临时文档三类场景 |
+| ChatProperties | `rag-chat/config/` | 全局 Chat 配置（开关、模型、Token 预算、TTL、阈值、提示词模板） |
 
 ### 5.3 四种对话场景
 
@@ -287,10 +291,12 @@ ChatController
         → LlmQueryRewriter.rewrite()          ← 查询改写
         → RagQueryService.searchDocuments()   ← 知识库检索
         → TempDocumentService.recallFromTemp() ← 临时文档召回
+        → SimilarityFilter.filter()           ← 相似度阈值过滤
         → ContextAssembler.assemble()         ← 上下文组装
+    → PromptTemplateResolver.resolve()        ← 场景感知 Prompt 选择
     → ChatGenerator.generate() / .generateStream()
     → SafetyChecker.checkOutput()             ← 输出安全校验
-    → SessionStore.save()                     ← 会话持久化
+    → SessionStore.save()                     ← 会话持久化（user + assistant）
 ```
 
 ### 5.5 配置体系
@@ -311,6 +317,9 @@ ChatController
 | sessionTtlSeconds | 3600 | 会话过期时间 |
 | tempDocTtlSeconds | 1800 | 临时文档生命周期 |
 | safetyCheckEnabled | true | 安全校验开关 |
+| similarityThreshold | 0.5 | 相似度阈值（过滤低分片段） |
+| ragSystemPrompt | (内置默认) | RAG 场景系统提示词模板 |
+| chatSystemPrompt | (无) | 普通对话系统提示词 |
 
 ### 5.6 异常降级规则
 
@@ -318,9 +327,11 @@ ChatController
 |---------|---------|
 | 查询改写失败 | 自动使用原始查询 |
 | 检索服务异常 | 降级为纯对话模式 |
+| 相似度过滤后无结果 | 返回"根据现有资料无法回答该问题"，不调用 LLM |
 | LLM 调用失败/超时 | 返回召回片段列表 |
 | Redis 不可用 | 回退 MySQL 读取会话历史 |
 | 文档解析失败 | 提示用户，不中断会话 |
+| 流式生成中断 | 不写入不完整消息，保留上一轮会话状态 |
 
 ### 5.7 引用溯源
 
@@ -464,8 +475,6 @@ ChatController
 | 类别 | 约束/问题 | 影响 |
 |------|----------|------|
 | 功能缺失 | 父子增强仅候选池内反查父块 | 向量库 parentChunkId（UUID）与 doc_chunk 表自增 ID 非同一体系，无法跨表反查父块原文 |
-| 功能缺失 | 无相似度阈值过滤 | 低相关度结果不会被过滤 |
-| 功能缺失 | 流式问答的 assistant 消息暂未持久化（done 事件回传完整回答，但未写入会话历史） | 流式模式下多轮会话助手消息缺失，待 Controller 层捕获 done 事件后补写 |
 | 待迁移 | rag.embedding（vectorDim）与 rag.deepseek-ocr 旧配置保留 | 后续迁移到 spring.ai.platform.models.extensions 统一管理 |
 | 待迁移 | DashScope 适配器依赖 spring-ai-alibaba（非官方 starter） | 版本已与 Spring AI 1.0.0 对齐，需关注后续兼容性 |
 | 性能 | 单服务部署，无分布式向量检索 | 大规模知识库场景性能受限 |
