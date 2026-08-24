@@ -48,6 +48,12 @@ public class KbChatConfig {
     /** 知识库级自定义系统提示词（null 时回退全局 default-system-prompt） */
     private String customSystemPrompt;
 
+    /** 知识库级 RAG 系统提示词（null 时回退全局 rag-system-prompt 或内置默认模板） */
+    private String ragSystemPrompt;
+
+    /** 知识库级相似度阈值（null 时回退全局 similarity-threshold 或不做过滤） */
+    private Double similarityThreshold;
+
     /** 知识库级安全校验开关（null 时回退全局 safety-check-enabled） */
     private Boolean safetyCheckEnabled;
 

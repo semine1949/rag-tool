@@ -14,6 +14,7 @@ import com.rag.common.entity.config.WeaviateCollectionConfig;
 import com.rag.common.enums.SearchMode;
 import com.rag.config.factory.AiModelFactory;
 import com.rag.config.factory.VectorStoreRegistry;
+import com.rag.config.retrieval.SimilarityFilter;
 import com.rag.config.vectorstore.WeaviateVectorStoreAdapter;
 import com.rag.auth.service.KbConfigService;
 import org.slf4j.Logger;
@@ -52,6 +53,7 @@ public class ChatContextService {
     private final AiModelFactory aiModelFactory;
     private final VectorStoreRegistry vectorStoreRegistry;
     private final ChatProperties chatProperties;
+    private final SimilarityFilter similarityFilter;
 
     public ChatContextService(QueryRewriter queryRewriter,
                               SafetyChecker safetyChecker,
@@ -60,7 +62,8 @@ public class ChatContextService {
                               KbConfigService kbConfigService,
                               AiModelFactory aiModelFactory,
                               VectorStoreRegistry vectorStoreRegistry,
-                              ChatProperties chatProperties) {
+                              ChatProperties chatProperties,
+                              SimilarityFilter similarityFilter) {
         this.queryRewriter = queryRewriter;
         this.safetyChecker = safetyChecker;
         this.contextAssembler = contextAssembler;
@@ -69,6 +72,7 @@ public class ChatContextService {
         this.aiModelFactory = aiModelFactory;
         this.vectorStoreRegistry = vectorStoreRegistry;
         this.chatProperties = chatProperties;
+        this.similarityFilter = similarityFilter;
     }
 
     /**
@@ -127,6 +131,20 @@ public class ChatContextService {
                     session.getSessionId(), rewrittenQuery, embeddingModelName, 5);
             if (tempDocs != null) {
                 allDocs.addAll(tempDocs);
+            }
+        }
+
+        // ③.5 相似度阈值过滤（在检索召回之后、上下文组装之前）
+        Double threshold = chatProperties.getSimilarityThreshold();
+        if (threshold != null && threshold > 0.0 && threshold <= 1.0) {
+            int before = allDocs.size();
+            allDocs = similarityFilter.filter(allDocs, threshold);
+            int after = allDocs.size();
+            if (after == 0 && before > 0) {
+                log.info("相似度阈值 [{}] 过滤后无结果，触发无答案降级", threshold);
+                // 返回空上下文，由调用方处理无答案降级
+                return new PreparedContext(rewrittenQuery, List.of(),
+                        new ContextAssembler.AssembledContext("", List.of()));
             }
         }
 

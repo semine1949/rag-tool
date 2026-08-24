@@ -1,6 +1,6 @@
 # RAG Vector Tool — 项目技术总结
 
-> **生成时间**：2026-08-06
+> **生成时间**：2026-08-18
 > **项目版本**：0.0.1-SNAPSHOT
 > **License**：MIT
 
@@ -33,7 +33,7 @@
 | 向量存储 | Weaviate（自建适配器直连） | Chroma/Qdrant/Pinecone 等 —— 不支持 |
 | Embedding | Qwen3-Embedding / BGE-M3 / OpenAI 兼容（硅基流动 / OpenAI 官方），Ollama 协议适配器已实现，配置即可启用本地模型 | — |
 | 分块策略 | text-model（自然分隔符） + hierarchical-model（父子双层） | 语义分割、关键词提取 —— 不支持 |
-| LLM 调用 | 暂无对外问答 API；底层 ChatModel/ChatClient 能力已就绪（AiModelFactory），支持 OPENAI/OLLAMA/DASHSCOPE 三协议 | 端到端对话产品 —— 未集成 |
+| LLM 调用 | 已支持对外问答 API（同步 + 流式 SSE），底层 ChatModel/ChatClient 通过 AiModelFactory 调用 OPENAI/OLLAMA/DASHSCOPE 三协议 | 端到端对话产品 —— 未集成 |
 | 重排 Rerank | Qwen3-Reranker（硅基流动 Rerank API），HYBRID 模式可启用，异常自动降级 | — |
 | 混合检索 | 三模式：VECTOR_ONLY / BM25_ONLY / HYBRID（RRF + 加权求和两种融合） | — |
 | 文件存储 | 本地文件系统（默认）或 MinIO（可选） | 其他对象存储 —— 不支持 |
@@ -48,11 +48,12 @@
 rag-vector-tool (父 POM)
 ├── rag-common     ← 抽象与工具层（零内部依赖）
 ├── rag-config     ← 装配与实现层（依赖 rag-common）
-├── rag-auth       ← 认证与权限层（依赖 rag-config）
+├── rag-auth       ← 认证与权限层（依赖 rag-common、rag-config）
+├── rag-chat       ← 会话编排层（依赖 rag-common、rag-config、rag-auth）
 └── rag-bootstrap  ← 启动入口 + REST API（依赖以上全部）
 ```
 
-**依赖链**：`rag-bootstrap → rag-auth → rag-config → rag-common`
+**依赖链**：`rag-bootstrap → rag-chat → rag-config → rag-common`，`rag-bootstrap` 和 `rag-chat` 均依赖 `rag-auth`
 
 ### 2.2 后端技术栈
 
@@ -65,6 +66,7 @@ rag-vector-tool (父 POM)
 | AI 模型 starter | spring-ai-starter-model-ollama | 1.0.0 | Ollama 协议模型官方 SDK |
 | AI 模型 starter | spring-ai-alibaba-starter-dashscope | 1.0.0.2 | DashScope 协议适配 |
 | 数据库 | MySQL | 8.0+ | 用户/权限/文档/版本持久化 |
+| 缓存 | Redis | 6.0+ | 会话上下文与用户索引（问答多轮对话） |
 | 向量数据库 | Weaviate | —（Docker 独立部署） | 向量存储与相似度检索 |
 | ORM | MyBatis | 3.0.3 | 数据访问 |
 | 文档解析 | Apache Tika + Apache POI | — | 通用文本提取、Excel 解析 |
@@ -79,7 +81,7 @@ rag-vector-tool (父 POM)
 ### 2.3 RAG 完整链路（当前实现状态）
 
 ```
-文档上传 → 解析 → 分块(chunk) → 向量化 → 向量入库 → 检索(向量/BM25/混合) → 重排(可选) → [LLM调用缺失]
+文档上传 → 解析 → 分块(chunk) → 向量化 → 向量入库 → 检索(向量/BM25/混合) → 重排(可选) → 查询改写 → 上下文组装 → LLM生成 → 流式输出
 ```
 
 | 步骤 | 当前实现 | 自研/第三方 | 状态 |
@@ -92,9 +94,10 @@ rag-vector-tool (父 POM)
 | 6. 原文持久化 | doc_chunk 表（MySQL） | MyBatis | ✅ 已实现 |
 | 7. 检索 | 三模式（VECTOR_ONLY/BM25_ONLY/HYBRID）+ 多知识库联合检索 + 白名单过滤，topK 默认 5 | Weaviate + 自研 | ✅ 已实现 |
 | 8. 重排 Rerank | Qwen3-Reranker 精排（候选池放大→精排→topK 截断，仅 HYBRID 模式，异常自动降级） | 自研（OpenAiRerankModel） | ✅ 已实现 |
-| 9. Prompt 组装 | 未实现（multi-search 预留回答生成扩展点） | — | ❌ |
-| 10. LLM 调用 | 底层 ChatModel/ChatClient 已就绪（AiModelFactory），未配置 CHAT 模型、无对外 API | Spring AI + 自研工厂 | ⚠️ 能力就绪，API 缺失 |
-| 11. 结果输出 | 检索返回 `List<FileProcessResult>`（含 snippet + score） | 自研 | ✅ 已实现 |
+| 9. 查询改写 | LlmQueryRewriter 基于会话历史进行指代消解与省略补全（改写失败自动降级为原始查询） | 自研 | ✅ 已实现 |
+| 10. 上下文组装 | ContextAssembler 按召回顺序编号 [1]..[n]，Token 预算耗尽时按相似度优先级截断 | 自研 | ✅ 已实现 |
+| 11. LLM 生成 | ChatGenerator 调用对话模型同步/流式生成回答，支持引用溯源，异常降级返回召回片段 | Spring AI + 自研 | ✅ 已实现 |
+| 12. 流式输出 | SSE 流式推送（citations → content → done/error），支持处理阶段进度事件 | 自研 | ✅ 已实现 |
 
 ### 2.4 部署形态
 
@@ -146,109 +149,7 @@ rag-vector-tool (父 POM)
 - 纯扫描件兜底：若 Tika + 内嵌图片 OCR 均无产出，回退为全量文档 OCR
 
 ### 3.2 Chunk 分块策略
-package com.rag.config.chat;
 
-import com.rag.common.exception.RagException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.List;
-import java.util.regex.Pattern;
-
-/**
- * 输入输出内容安全校验器。
- * <p>
- * 职责：
- * <ul>
- *   <li>输入校验：拦截违规查询关键词与超长输入</li>
- *   <li>提示词注入防护：识别并拒绝试图套取系统提示词 / 内部配置的查询</li>
- *   <li>输出校验：拦截生成内容中的违规关键词</li>
- * </ul>
- * 校验失败抛出 {@link RagException}（错误码 SAFETY_BLOCKED），由上层统一处理。
- * </p>
- */
-public class SafetyChecker {
-
-    private static final Logger log = LoggerFactory.getLogger(SafetyChecker.class);
-
-    /** 单次查询最大长度（字符），超长直接拒绝 */
-    private static final int MAX_QUERY_LENGTH = 4000;
-
-    /** 基础违规关键词（可按需扩展为外部配置） */
-    private static final List<String> BLOCKED_KEYWORDS = List.of(
-            "违法", "暴恐", "毒品交易");
-
-    /** 提示词注入特征：试图套取系统提示词或内部配置 */
-    private static final Pattern INJECTION_PATTERN = Pattern.compile(
-            "(忽略|无视|忘记).{0,10}(之前|上面|以上|系统).{0,10}(指令|提示词|规则)"
-                    + "|(输出|打印|显示|复述|泄露).{0,10}(系统提示词|system\\s*prompt|内部配置|api\\s*key)",
-            Pattern.CASE_INSENSITIVE);
-
-    /**
-     * 校验用户输入查询。
-     *
-     * @param query 用户查询
-     * @throws RagException 校验不通过时抛出（SAFETY_BLOCKED）
-     */
-    public void checkInput(String query) {
-        if (query == null || query.isBlank()) {
-            return;
-        }
-        if (query.length() > MAX_QUERY_LENGTH) {
-            throw new RagException("SAFETY_BLOCKED", "查询内容超长，请精简后重试");
-        }
-        // 提示词注入防护
-        if (INJECTION_PATTERN.matcher(query).find()) {
-            log.warn("检测到疑似提示词注入查询，已拦截");
-            throw new RagException("SAFETY_BLOCKED", "查询内容不合规");
-        }
-        // 违规关键词拦截
-        for (String keyword : BLOCKED_KEYWORDS) {
-            if (query.contains(keyword)) {
-                log.warn("查询命中违规关键词 [{}]，已拦截", keyword);
-                throw new RagException("SAFETY_BLOCKED", "查询内容不合规");
-            }
-        }
-    }
-
-    /**
-     * 校验模型输出内容（违规时返回兜底文案，不抛异常，保障流式输出可收尾）。
-     *
-     * @param answer 模型生成的完整回答
-     * @return 校验通过返回原文；命中违规返回兜底提示
-     */
-    public String checkOutput(String answer) {
-        if (answer == null || answer.isBlank()) {
-            return answer;
-        }
-        for (String keyword : BLOCKED_KEYWORDS) {
-            if (answer.contains(keyword)) {
-                log.warn("生成内容命中违规关键词 [{}]，已替换为兜底文案", keyword);
-                return "抱歉，生成的内容包含不合规信息，已被拦截。请调整问题后重试。";
-            }
-        }
-        return answer;
-    }
-
-    /**
-     * 提示词注入防护：清洗用户内容中可能干扰系统提示词的指令片段。
-     * <p>用于将用户查询/上传文档内容嵌入 Prompt 前的预处理，
-     * 去除常见的角色覆盖指令前缀。</p>
-     *
-     * @param userContent 用户侧内容
-     * @return 清洗后的内容
-     */
-    public String sanitize(String userContent) {
-        if (userContent == null) {
-            return null;
-        }
-        // 去除常见的角色覆盖指令（如"你现在是...""忽略之前的指令"）
-        return userContent
-                .replaceAll("(?i)(忽略|无视|忘记)(之前|上面|以上)(的)?(所有)?(指令|提示词|规则)", "")
-                .replaceAll("(?i)you\\s+are\\s+now\\s+", "")
-                .replaceAll("(?i)ignore\\s+(all\\s+)?previous\\s+instructions", "");
-    }
-}
 | 策略 | 类 | 模式标识 | 默认参数 | 算法描述 |
 |------|-----|---------|---------|---------|
 | **text-model** | `SizeTextSplitter` | `text_model` | delimiter=`\n`, maxTokens=1024, chunkOverlap=50 | 自然分隔符优先（按 `\n` 切分，片段拼接），超长片段硬截断（含重叠） |
@@ -276,7 +177,7 @@ public class SafetyChecker {
 - 部署方式：当前配置均为远程 API 调用；Ollama 协议适配器已实现（OllamaModelAdapter），配置即可启用本地模型
 - 协议：统一走 OpenAI 兼容 /embeddings 端点，由 AiModelFactory.getEmbeddingModel() 创建官方 OpenAiEmbeddingModel（spring-ai-starter-model-openai）
 - 缓存：按逻辑模型名缓存实例（AiModelFactoryImpl 内 ConcurrentHashMap，惰性创建）
-- 配置与映射：模型统一声明于 spring.ai.platform.models（application.public.yml）；知识库 EmbeddingModelType 经 RagToolService.resolveEmbeddingModel() 映射为逻辑名（BGE_M3→bge-m3 / TONGYI→tongyi / OPENAI→openai）
+- 配置与映射：模型统一声明于 spring.ai.platform.models（application.public.yml）；知识库 EmbeddingModelType 经 ChatContextService.resolveEmbeddingModel() 映射为逻辑名（BGE_M3→bge-m3 / TONGYI→tongyi / OPENAI→openai）
 
 ---
 
@@ -292,14 +193,14 @@ public class SafetyChecker {
 | 相似度计算 | Weaviate cosine 距离 → certainty（1-distance） |
 | 多库检索 | 支持多知识库联合检索 + 白名单过滤 |
 
-**单库检索流程**（RagToolService.search）：
+**单库检索流程**（RagQueryService.search）：
 1. 加载知识库配置（Embedding 模型 + Weaviate 集合）
 2. 经 AiModelFactory 获取对应 EmbeddingModel
 3. 通过 WeaviateVectorStoreAdapter.searchByMode(query, topK, filter, searchConfig) 执行多模式检索
 4. 若启用重排（仅 HYBRID 模式）：候选池放大（topK × rerankMultiplier，默认 3）→ Qwen3-Reranker 精排 → topK 截断；异常自动降级原始排序
 5. 返回 FileProcessResult 列表（含 snippet、score、fileName、documentVersion 等）
 
-**多库检索流程**（RagToolService.multiSearch，严格顺序）：
+**多库检索流程**（RagQueryService.multiSearch，严格顺序）：
 1. 参数校验（kbIds/query 非空）+ Controller 层逐库校验 READ 权限（任一失败阻断整个请求）
 2. 召回量分层计算：每库召回 = topK × expandFactor（默认 2）；白名单场景再 × 3 补偿过滤损耗
 3. 多库串行粗排合并：逐 kbId loadConfigs → getWeaviateStore → searchByMode，空结果跳过，合并为统一候选池
@@ -339,25 +240,94 @@ public class SafetyChecker {
 
 ---
 
-## 五、LLM 调用模块
+## 五、Chat 问答模块
 
-### 5.1 LLM 模型
+### 5.1 模块职责
 
-当前项目不包含对外 LLM 问答 API。RagToolService.search() / multiSearch() 仅返回检索结果（snippet + score），不组装 Prompt 也不调用 LLM 生成回答。
+Chat 模块承载**对话交互核心能力**，遵循三层架构设计：
 
-底层对话能力已就绪：
-- AiModelFactory.getChatModel(modelName) / getChatClient(modelName) 可获取对话模型（支持 OPENAI / OLLAMA / DASHSCOPE 三协议）
-- ModelCategory 枚举已预留 CHAT / WORKFLOW / AGENT / RAG 类别
-- 当前 application.public.yml 未声明任何 CHAT 类别模型，需在配置中新增后方可使用
-- multi-search 流程中已预留两个扩展点：关键字提炼与回答生成
+| 层 | 模块 | 职责 |
+|----|------|------|
+| 接入层 | rag-bootstrap（ChatController） | REST API 入口，同步/流式问答端点 |
+| 会话层 | rag-chat | 会话生命周期管理、消息收发编排、上下文组织 |
+| 能力层 | rag-config（AiModelFactory） | 对话模型调用、模型统一管理 |
 
-### 5.2 Prompt 体系
+### 5.2 核心组件
 
-**无**。项目中不存在系统提示词模板、用户查询模板、上下文拼接模板。
+| 组件 | 包路径 | 职责 |
+|------|--------|------|
+| ChatSessionService | `rag-chat/service/` | 会话创建、查询、续期，按租户+用户隔离 |
+| ChatContextService | `rag-chat/service/` | 查询改写→检索召回→上下文组装全流程编排 |
+| ChatMessageService | `rag-chat/service/` | 顶层编排，协调会话+上下文+生成+持久化 |
+| ChatGenerator | `rag-chat/generator/` | 对话模型调用，支持同步与流式生成 |
+| ContextAssembler | `rag-chat/assembler/` | 召回片段按编号 [1]..[n] 组装，Token 预算截断 |
+| LlmQueryRewriter | `rag-chat/rewriter/` | 基于会话历史的查询改写，携带最近 3 轮 |
+| RedisSessionStore | `rag-chat/store/` | 会话 Redis 存储，TTL 自动续期 |
+| SafetyChecker | `rag-chat/safety/` | 输入输出安全校验，提示词注入防护 |
+| TempDocumentService | `rag-chat/document/` | 临时文档解析、向量化、内存召回 |
+| ChatProperties | `rag-chat/config/` | 全局 Chat 配置（开关、模型、Token 预算、TTL） |
 
-### 5.3 输出处理
+### 5.3 四种对话场景
 
-**无**。检索直接返回原始片段文本 + 元数据，不做引用溯源、引用片段展示、幻觉抑制。
+| 场景 | 数据源 | 说明 |
+|------|--------|------|
+| 普通对话 | 会话历史 | 基于历史上下文的多轮问答 |
+| 知识库问答 | 向量知识库 | 检索增强生成（RAG） |
+| 文档问答 | 临时上传文件 | 文件解析后作为上下文 |
+| 混合问答 | 知识库 + 临时文档 | 两者共同作为上下文 |
+
+### 5.4 问答路由流程
+
+```
+ChatController
+  → ChatMessageService.chat() / .chatStream()
+    → ChatSessionService.getOrCreateSession()
+    → ChatContextService.prepareContext()
+        → SafetyChecker.checkInput()          ← 输入安全校验
+        → LlmQueryRewriter.rewrite()          ← 查询改写
+        → RagQueryService.searchDocuments()   ← 知识库检索
+        → TempDocumentService.recallFromTemp() ← 临时文档召回
+        → ContextAssembler.assemble()         ← 上下文组装
+    → ChatGenerator.generate() / .generateStream()
+    → SafetyChecker.checkOutput()             ← 输出安全校验
+    → SessionStore.save()                     ← 会话持久化
+```
+
+### 5.5 配置体系
+
+| 配置项 | 来源 | 优先级 |
+|--------|------|--------|
+| 全局默认 | ChatProperties（`rag.chat.*`） | 最低 |
+| 知识库级 | KbChatConfig（`kb_chat_config` 表） | 中等 |
+| 请求参数 | ChatRequest（`model` 字段） | 最高 |
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| enabled | true | 问答能力全局开关 |
+| chatModel | qwen-turbo | 默认对话模型 |
+| rewriteEnabled | true | 查询改写开关 |
+| contextWindowTokens | 6000 | 上下文 Token 预算 |
+| maxHistoryRounds | 10 | 最大保留历史轮次 |
+| sessionTtlSeconds | 3600 | 会话过期时间 |
+| tempDocTtlSeconds | 1800 | 临时文档生命周期 |
+| safetyCheckEnabled | true | 安全校验开关 |
+
+### 5.6 异常降级规则
+
+| 异常环节 | 降级策略 |
+|---------|---------|
+| 查询改写失败 | 自动使用原始查询 |
+| 检索服务异常 | 降级为纯对话模式 |
+| LLM 调用失败/超时 | 返回召回片段列表 |
+| Redis 不可用 | 回退 MySQL 读取会话历史 |
+| 文档解析失败 | 提示用户，不中断会话 |
+
+### 5.7 引用溯源
+
+- 召回片段按相似度排序编号 [1]..[n]，与 ContextAssembler 组装编号一一对应
+- 引用元数据包含：docId、kbId、fileName、chunkId、snippet、score
+- 同步接口返回 `List<Citation>` 与答案并列
+- 流式接口先推送 citations 事件，再逐段推送 content，最后推送 done 事件
 
 ---
 
@@ -447,6 +417,13 @@ public class SafetyChecker {
 | POST | `/api/rag/multi-search` | 多知识库联合检索 + 白名单过滤（kbIds/query/topK/whitelist/expandFactor/searchMode/rerank/rerankMultiplier/enableParentEnhancement） |
 | GET | `/api/rag/documents?kbId=` | 查看知识库文档列表 |
 
+**问答接口**（需 Token）：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/rag/chat` | 同步问答（multipart/form-data，支持 kbId + query + files + sessionId + model） |
+| POST | `/api/rag/chat/stream` | 流式问答 SSE（text/event-stream，事件类型：citations / content / done / error） |
+
 **管理接口**（需 Token + 租户管理员/KB 管理员）：
 
 | 方法 | 路径 | 说明 |
@@ -486,12 +463,14 @@ public class SafetyChecker {
 
 | 类别 | 约束/问题 | 影响 |
 |------|----------|------|
-| 功能缺失 | 无对外问答 API（底层 ChatModel/ChatClient 已就绪，但未配置 CHAT 模型） | 检索结果需调用方自行组装 Prompt 调 LLM；multi-search 的关键字提炼与回答生成为 TODO |
 | 功能缺失 | 父子增强仅候选池内反查父块 | 向量库 parentChunkId（UUID）与 doc_chunk 表自增 ID 非同一体系，无法跨表反查父块原文 |
 | 功能缺失 | 无相似度阈值过滤 | 低相关度结果不会被过滤 |
+| 功能缺失 | 流式问答的 assistant 消息暂未持久化（done 事件回传完整回答，但未写入会话历史） | 流式模式下多轮会话助手消息缺失，待 Controller 层捕获 done 事件后补写 |
 | 待迁移 | rag.embedding（vectorDim）与 rag.deepseek-ocr 旧配置保留 | 后续迁移到 spring.ai.platform.models.extensions 统一管理 |
 | 待迁移 | DashScope 适配器依赖 spring-ai-alibaba（非官方 starter） | 版本已与 Spring AI 1.0.0 对齐，需关注后续兼容性 |
 | 性能 | 单服务部署，无分布式向量检索 | 大规模知识库场景性能受限 |
 | 性能 | Embedding/OCR 均同步调用 | 大文件上传可能超时（OCR 超时 120s） |
+| 性能 | 多库检索串行遍历 | 知识库多时延迟线性增长 |
 | 稳定性 | DeepSeek-OCR 依赖硅基流动付费 API | 402 错误（账户余额不足）会导致 OCR 失败 |
 | 稳定性 | 模型实例缓存无过期策略 | 模型配置变更后需重启 |
+| 稳定性 | 临时文档处理为同步阻塞 | 大文件会拖慢首字延迟（TTFT） |

@@ -96,6 +96,8 @@ rag:
     temp-doc-max-count: 5
     # 输入输出内容安全校验开关
     safety-check-enabled: true
+    # 相似度阈值（0.0~1.0），低于此值的召回片段过滤
+    similarity-threshold: 0.5
     # 默认系统提示词（知识库级自定义提示词可覆盖）
     default-system-prompt: |
       你是一个严谨的知识库问答助手。请严格遵守以下规则：

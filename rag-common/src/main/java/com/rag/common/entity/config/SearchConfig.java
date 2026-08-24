@@ -72,12 +72,19 @@ public class SearchConfig {
     @Builder.Default
     private Boolean rerankEnabled = false;
 
-    /**
-     * 重排候选池放大倍数，启用重排时召回阶段放大候选数量。
+    /** 重排候选池放大倍数，启用重排时召回阶段放大候选数量。
      * <p>默认 3 倍，即取 topK * 3 条候选送入精排，精排后再截取最终 topK。</p>
      */
     @Builder.Default
     private Integer rerankCandidateMultiplier = 3;
+
+    // ==================== 相似度阈值过滤 ====================
+
+    /**
+     * 相似度阈值（0.0~1.0），仅保留 score ≥ threshold 的召回片段。
+     * <p>null 时不执行过滤，与原有行为完全兼容。</p>
+     */
+    private Double similarityThreshold;
 
     // ==================== 工厂方法 ====================
 

@@ -1,6 +1,7 @@
 package com.rag.chat.service;
 
 import com.rag.auth.context.RequestContext;
+import com.rag.chat.assembler.PromptTemplateResolver;
 import com.rag.chat.config.ChatProperties;
 import com.rag.chat.generator.ChatGenerator;
 import com.rag.chat.safety.SafetyChecker;
@@ -11,6 +12,7 @@ import com.rag.common.chat.ChatSession;
 import com.rag.common.chat.ChatStreamEvent;
 import com.rag.common.chat.Citation;
 import com.rag.common.chat.SessionStore;
+import com.rag.common.entity.KbChatConfig;
 import com.rag.common.exception.RagException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 消息收发编排服务。
@@ -45,6 +48,7 @@ public class ChatMessageService {
     private final SafetyChecker safetyChecker;
     private final SessionStore sessionStore;
     private final ChatProperties chatProperties;
+    private final PromptTemplateResolver promptResolver;
     private final ObjectMapper objectMapper;
 
     public ChatMessageService(ChatSessionService sessionService,
@@ -53,6 +57,7 @@ public class ChatMessageService {
                               SafetyChecker safetyChecker,
                               SessionStore sessionStore,
                               ChatProperties chatProperties,
+                              PromptTemplateResolver promptResolver,
                               ObjectMapper objectMapper) {
         this.sessionService = sessionService;
         this.contextService = contextService;
@@ -60,6 +65,7 @@ public class ChatMessageService {
         this.safetyChecker = safetyChecker;
         this.sessionStore = sessionStore;
         this.chatProperties = chatProperties;
+        this.promptResolver = promptResolver;
         this.objectMapper = objectMapper;
     }
 
@@ -96,9 +102,19 @@ public class ChatMessageService {
         String contextText = prepared.assembledContext().getContextText();
         List<Citation> citations = prepared.assembledContext().getCitations();
 
+        // ③.5 解析系统提示词（RAG 场景加载约束模板，普通对话加载通用模板）
+        boolean isRag = kbId != null || (files != null && !files.isEmpty());
+        String systemPrompt = promptResolver.resolve(isRag, null);
+
         // ④ 回答生成
-        String answer = chatGenerator.generate(
-                query, contextText, citations, null, modelName);
+        String answer;
+        if (isRag && (contextText == null || contextText.isBlank())) {
+            // RAG 场景下无可用上下文时，直接返回无答案，不调用 LLM
+            answer = "根据现有资料无法回答该问题。";
+        } else {
+            answer = chatGenerator.generate(
+                    query, contextText, citations, systemPrompt, modelName);
+        }
 
         // ⑤ 输出安全校验
         if (!safetyChecker.checkOutput(answer)) {
@@ -158,18 +174,49 @@ public class ChatMessageService {
         String contextText = prepared.assembledContext().getContextText();
         List<Citation> citations = prepared.assembledContext().getCitations();
 
-        // ④ 流式生成
+        // ③.5 解析系统提示词（RAG 场景加载约束模板，普通对话加载通用模板）
+        boolean isRag = kbId != null || (files != null && !files.isEmpty());
+        String systemPrompt = promptResolver.resolve(isRag, null);
+
+        // ④ 流式生成（RAG 场景无可用上下文时，直接返回无答案，不调用 LLM）
+        if (isRag && (contextText == null || contextText.isBlank())) {
+            final ChatSession finalSession = session;
+            finalSession.appendMessage(ChatMessage.user(query));
+            finalSession.appendMessage(ChatMessage.assistant("根据现有资料无法回答该问题。"));
+            sessionStore.save(finalSession, chatProperties.getSessionTtlSeconds());
+            return Flux.concat(
+                    Flux.just(ChatStreamEvent.citations("[]")),
+                    Flux.just(ChatStreamEvent.content("根据现有资料无法回答该问题。")),
+                    Flux.just(ChatStreamEvent.done("根据现有资料无法回答该问题。")));
+        }
+
         String citationsJson = serializeCitations(citations);
         final String finalQuery = query;
         final ChatSession finalSession = session;
+        // 捕获 done 事件中的完整回答，用于流式完成后持久化助手消息
+        AtomicReference<String> fullAnswer = new AtomicReference<>();
 
-        return chatGenerator.generateStream(query, contextText, citationsJson, null, modelName)
+        return chatGenerator.generateStream(query, contextText, citationsJson, systemPrompt, modelName)
+                .doOnNext(event -> {
+                    // 捕获 done 事件中的完整回答
+                    if (ChatStreamEvent.TYPE_DONE.equals(event.getType())) {
+                        fullAnswer.set(event.getData());
+                    }
+                })
                 .doOnComplete(() -> {
-                    // 流式完成后持久化会话（异步，不阻塞 SSE 流）
+                    // 持久化用户消息
                     finalSession.appendMessage(ChatMessage.user(finalQuery));
+                    // 持久化助手消息（仅当流式完整结束时，异常中断不写入不完整消息）
+                    String answer = fullAnswer.get();
+                    if (answer != null && !answer.isBlank()) {
+                        finalSession.appendMessage(ChatMessage.assistant(answer));
+                    }
                     sessionStore.save(finalSession, chatProperties.getSessionTtlSeconds());
                 })
-                .doOnError(e -> log.error("流式问答异常 sessionId={}", session.getSessionId(), e));
+                .doOnError(e -> {
+                    // 流式异常时不写入不完整消息，保留上一轮完整会话状态
+                    log.error("流式问答异常，会话状态未变更 sessionId={}", session.getSessionId(), e);
+                });
     }
 
     /**

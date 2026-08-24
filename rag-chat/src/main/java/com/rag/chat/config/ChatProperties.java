@@ -63,6 +63,15 @@ public class ChatProperties {
     /** 输入输出内容安全校验开关 */
     private boolean safetyCheckEnabled = true;
 
+    /** RAG 场景系统提示词模板（未配置时使用内置默认模板，内置模板包含引用标注、禁止编造等强制约束） */
+    private String ragSystemPrompt;
+
+    /** 普通对话系统提示词（未配置时不传系统提示词，模型使用自身默认行为） */
+    private String chatSystemPrompt;
+
+    /** 相似度阈值（0.0~1.0），低于此值的召回片段过滤，默认值见 application.yml */
+    private Double similarityThreshold;
+
     /** 默认系统提示词（知识库级自定义提示词可覆盖） */
     private String defaultSystemPrompt;
 }
