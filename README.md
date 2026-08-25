@@ -2,25 +2,25 @@
   <h1 align="center">RAG Vector Tool</h1>
   <p align="center">
     <strong>开箱即用的生产级 RAG（检索增强生成）知识库平台</strong><br/>
-    全链路私有化部署 · 多租户权限隔离 · 多源文档解析 · 自适应分块 · Weaviate 向量存储
+    全链路私有化部署 · 多租户权限隔离 · 多源文档解析 · 自适应分块 · Weaviate 向量存储 · 流式问答 · Web 控制台
   </p>
 </p>
 
 <p align="center">
   <!-- 徽章区 -->
-  <img src="https://img.shields.io/github/stars/your-org/rag-tool?style=flat-square&color=yellow" alt="GitHub Stars">
-  <img src="https://img.shields.io/github/forks/your-org/rag-tool?style=flat-square" alt="Forks">
-  <img src="https://img.shields.io/github/issues/your-org/rag-tool?style=flat-square&color=green" alt="Issues">
-  <img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="CI Build">
-  <img src="https://img.shields.io/badge/version-0.0.1-blue?style=flat-square" alt="Version">
-  <img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Java-17-orange?style=flat-square" alt="Java 17">
   <img src="https://img.shields.io/badge/Spring%20Boot-3.4.5-brightgreen?style=flat-square" alt="Spring Boot">
   <img src="https://img.shields.io/badge/Spring%20AI-1.0.0-blueviolet?style=flat-square" alt="Spring AI">
+  <img src="https://img.shields.io/badge/React-18-61dafb?style=flat-square" alt="React">
+  <img src="https://img.shields.io/badge/TypeScript-5.6-3178c6?style=flat-square" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Ant%20Design-5-1677ff?style=flat-square" alt="Ant Design">
+  <img src="https://img.shields.io/badge/version-0.0.1-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square" alt="License">
 </p>
 
 <p align="center">
   <a href="#-快速开始"><strong>⚡ 快速开始</strong></a> ·
+  <a href="#-前端控制台"><strong>🖥 前端控制台</strong></a> ·
   <a href="#-系统架构"><strong>🏗 系统架构</strong></a> ·
   <a href="#-核心特性"><strong>✨ 核心特性</strong></a> ·
   <a href="#-进阶用法"><strong>📖 进阶用法</strong></a> ·
@@ -32,9 +32,9 @@
 
 ## 📖 项目简介
 
-**RAG Vector Tool** 是一套面向生产环境的 **RAG（检索增强生成）知识库平台**——基于 Spring Boot 3 + Spring AI + Weaviate，提供从文档解析、自适应语义分块到向量化检索的全链路闭环，内置多租户 RBAC 权限体系，支持私有化部署、数据不出境。
+**RAG Vector Tool** 是一套面向生产环境的 **RAG（检索增强生成）知识库平台**——基于 Spring Boot 3 + Spring AI + Weaviate，提供从文档解析、自适应语义分块、向量化检索到流式问答的全链路闭环，内置多租户 RBAC 权限体系，配套 React Web 管理控制台，支持私有化部署、数据不出境。
 
-两套分块策略（通用文本 `text-model` + 层级父子 `hierarchical-model`）覆盖长文档全文检索与段落级精准召回场景；文档处理全流程状态机（PENDING→PARSED→CHUNKING→CHUNKED→VECTORIZING→COMPLETED）确保可追踪可恢复。
+两套分块策略（通用文本 `text-model` + 层级父子 `hierarchical-model`）覆盖长文档全文检索与段落级精准召回场景；三模式检索（向量/BM25/混合）配合 Rerank 重排与相似度过滤，确保召回质量；会话式问答支持 SSE 流式输出、引用溯源与多轮对话上下文管理。
 
 ---
 
@@ -43,10 +43,12 @@
 | # | 特性 | 说明 |
 |---|------|------|
 | ✅ | **自适应语义分块引擎** | `text-model`（自然分隔符优先 + 硬截断兜底，maxTokens=1024）+ `hierarchical-model`（父块 2048 tokens 段落级 + 子块 1024 tokens 检索级，父子关联） |
-| ✅ | **全栈轻量、单服务启动** | Spring Boot 3.4.5 + Spring AI 1.0，Java 17 即可运行 |
+| ✅ | **三模式混合检索** | VECTOR_ONLY / BM25_ONLY / HYBRID 三种模式，支持 RRF 和加权求和两种融合策略，Qwen3-Reranker 重排序精排 |
+| ✅ | **流式问答与引用溯源** | SSE 流式输出（逐字渲染），召回片段按 [1]..[n] 编号，答案与引用一一对应，支持多轮对话上下文 |
+| ✅ | **全栈轻量、单服务启动** | Spring Boot 3.4.5 + Spring AI 1.0，Java 17 即可运行，配套 React 18 + Ant Design 5 Web 控制台 |
 | ✅ | **多租户 + RBAC 权限隔离** | 租户-用户-角色三级模型（TENANT_ADMIN / KB_ADMIN / CONTRIBUTOR / VIEWER），JWT 认证 + 登录锁定 |
 | ✅ | **17 种文件格式多源解析** | PDF / Word / Excel / PPT / Markdown / HTML / 图片等，含 DeepSeek-OCR 多模态识别与 Excel 智能表格解析 |
-| ✅ | **文档处理全流程状态机** | PENDING → PARSING → PARSED → CHUNKING → CHUNKED → VECTORIZING → COMPLETED（任意阶段可进入 FAILED），状态可追踪、可恢复 |
+| ✅ | **文档处理全流程状态机** | PENDING → PARSING → CHUNKING → CHUNKED → VECTORIZING → COMPLETED（任意阶段可进入 FAILED），状态可追踪、可恢复 |
 | ✅ | **向量化存储一体化** | Weaviate 向量数据库原生集成，分片原文持久化到 `doc_chunk` 表（chunk_mode + params_snapshot 参数溯源），不依赖向量库存储原文 |
 | ✅ | **版本管理 + 变更追踪** | 语义化版本号（INITIAL / MAJOR / MINOR / PATCH），支持文档更新后增量重处理 |
 | ✅ | **可插拔 Embedding 与 LLM** | 已适配 Qwen3-Embedding / BGE-M3 / OpenAI 兼容协议，支持硅基流动、Ollama 等本地/云端模型 |
@@ -84,6 +86,7 @@ flowchart LR
     subgraph 检索与问答
         M[🔍 向量检索<br/>语义相似度匹配]
         N[📝 LLM 生成回答<br/>上下文拼接]
+        Q[💬 流式问答<br/>SSE 逐字输出]
     end
 
     subgraph 反馈闭环
@@ -122,11 +125,12 @@ flowchart LR
 ### 前置条件
 
 - **Java 17+**
+- **Node.js 18+**（前端控制台构建）
 - **MySQL 8.0+**（执行 `schema-v2.sql` 建表）
 - **Weaviate**（Docker 或独立部署）
 - **Maven 3.8+**（可选，内置 `mvnw` 无需本地安装 Maven）
 
-### 源码启动
+### 后端启动
 
 ```bash
 # 1. 克隆仓库
@@ -162,7 +166,49 @@ curl -X POST http://localhost:8080/api/rag/upload/batch \
 
 # 向量检索
 curl -X POST 'http://localhost:8080/api/rag/search?kbId=1&query=关键问题&topK=5'
+
+# 多库联合检索
+curl -X POST http://localhost:8080/api/rag/multi-search \
+  -H 'Content-Type: application/json' \
+  -d '{"kbIds":[1,2],"query":"关键问题","topK":5}'
+
+# 流式问答（SSE）
+curl -X POST http://localhost:8080/api/rag/chat/stream \
+  -H 'Authorization: Bearer <token>' \
+  -F 'kbId=1' -F 'query=请总结文档的核心内容'
 ```
+
+---
+
+## 🖥 前端控制台
+
+配套 React Web 管理控制台，提供可视化知识库管理、文档上传、参数配置、流式问答交互等完整功能。
+
+```bash
+# 1. 进入前端目录
+cd rag-frontend
+
+# 2. 安装依赖
+npm install
+
+# 3. 开发模式启动（端口 3000，自动代理 API 到 localhost:8080）
+npm run dev
+
+# 4. 生产构建（输出到 rag-bootstrap/src/main/resources/static，与后端服务合一部署）
+npm run build
+```
+
+**主要页面**：
+
+| 页面 | 路径 | 说明 |
+|------|------|------|
+| 登录/注册 | `/login` `/register` | JWT 认证，Token 自动刷新 |
+| 知识库管理 | `/kb` | 列表/搜索/创建/删除/集合操作 |
+| 知识库配置 | `/kb/:id/config` | 检索模式/融合策略/重排/相似度阈值/Embedding 模型 |
+| 文档管理 | `/kb/:id/docs` | 上传/列表/集合初始化/清空/重处理 |
+| 问答交互 | `/chat` | 双模式（知识库/临时文档）/ SSE 流式 / 引用溯源 / 多轮对话 |
+| 租户管理 | `/tenant` | 创建租户/成员角色分配（TENANT_ADMIN） |
+| 用户管理 | `/users` | 创建用户（TENANT_ADMIN） |
 
 ---
 
@@ -286,12 +332,21 @@ LangChain 和 LlamaIndex 是通用的 RAG **开发框架**，提供灵活但需�
 
 ## 🗺 路线图 Roadmap
 
+### 已完成
+
+- [x] 混合检索（向量 + BM25）+ RRF / 加权求和双融合策略
+- [x] 检索结果重排（Qwen3-Reranker 精排）
+- [x] 流式问答（SSE）与引用溯源
+- [x] 多轮对话上下文管理（Redis 会话存储）
+- [x] 查询改写（指代消解 + 省略补全）
+- [x] 临时文档问答（不入库，会话级别）
+- [x] 可插拔模型适配器（OpenAI / Ollama / DashScope 三协议）
+- [x] Web 前端管理控制台（React 18 + Ant Design 5）
+
 ### 短期（1-2 个月）
 
-- [ ] 混合检索（向量 + BM25 关键词）增强召回精度
-- [ ] 检索结果重排（Re-ranking）优化排序质量
-- [ ] 集成 Ollama 本地 Embedding 模型
 - [ ] 检索缓存机制，降低重复查询延迟
+- [ ] 知识库问答对话历史导入导出
 
 ### 长期方向
 
