@@ -1,0 +1,106 @@
+- generic [ref=f1e3]:
+  - complementary [ref=f1e4]:
+    - generic [ref=f1e10]:
+      - paragraph [ref=f1e11]: NebulaKB
+      - paragraph [ref=f1e12]: 企业级 RAG 平台
+    - navigation [ref=f1e13]:
+      - generic [ref=f1e14]:
+        - paragraph [ref=f1e15]: 工作台
+        - list [ref=f1e16]:
+          - listitem [ref=f1e17]:
+            - link "概览" [ref=f1e18] [cursor=pointer]:
+              - /url: /dashboard
+          - listitem [ref=f1e25]:
+            - link "智能问答" [ref=f1e26] [cursor=pointer]:
+              - /url: /chat
+      - generic [ref=f1e31]:
+        - paragraph [ref=f1e32]: 内容管理
+        - list [ref=f1e33]:
+          - listitem [ref=f1e34]:
+            - link "知识库管理" [ref=f1e35] [cursor=pointer]:
+              - /url: /kbs
+          - listitem [ref=f1e41]:
+            - link "文档管理" [ref=f1e42] [cursor=pointer]:
+              - /url: /docs
+      - generic [ref=f1e48]:
+        - paragraph [ref=f1e49]: 租户与权限
+        - list [ref=f1e50]:
+          - listitem [ref=f1e51]:
+            - link "租户管理" [ref=f1e52] [cursor=pointer]:
+              - /url: /tenants
+          - listitem [ref=f1e58]:
+            - link "用户管理" [ref=f1e59] [cursor=pointer]:
+              - /url: /users
+          - listitem [ref=f1e66]:
+            - link "角色权限" [ref=f1e67] [cursor=pointer]:
+              - /url: /roles
+    - paragraph [ref=f1e73]: 版本 v1.0.0 · Mock 模式
+  - generic [ref=f1e74]:
+    - banner [ref=f1e75]:
+      - generic [ref=f1e76]:
+        - heading "智能问答" [level=1] [ref=f1e77]
+        - paragraph [ref=f1e78]: 基于检索增强生成的知识库问答
+      - textbox "搜索知识库、文档…" [ref=f1e80]
+      - button "通知" [ref=f1e81] [cursor=pointer]
+      - button "TE tenant_admin Acme 智能科技" [ref=f1e87] [cursor=pointer]:
+        - generic [ref=f1e88]: TE
+        - generic [ref=f1e89]:
+          - generic [ref=f1e90]: tenant_admin
+          - generic [ref=f1e91]: Acme 智能科技
+    - main [ref=f1e92]:
+      - generic [ref=f1e93]:
+        - generic [ref=f1e94]:
+          - generic [ref=f1e95]:
+            - generic [ref=f1e96]:
+              - generic [ref=f1e97]:
+                - heading "知识库范围" [level=3] [ref=f1e98]
+                - paragraph [ref=f1e99]: 已选 0 / 0 个
+              - button "清空" [ref=f1e101] [cursor=pointer]
+            - paragraph [ref=f1e103]: 暂无可用知识库
+          - generic [ref=f1e104]:
+            - heading "模型与检索参数" [level=3] [ref=f1e107]
+            - generic [ref=f1e108]:
+              - generic [ref=f1e109]:
+                - generic [ref=f1e110]: 对话模型
+                - combobox [ref=f1e112]
+              - generic [ref=f1e113]:
+                - generic [ref=f1e114]: 检索模式
+                - combobox [ref=f1e116]:
+                  - option "纯向量检索"
+                  - option "纯关键词检索"
+                  - option "混合检索" [selected]
+                - paragraph [ref=f1e117]: 向量与 BM25 加权融合后重排序，兼顾语义泛化与关键词精度
+              - generic [ref=f1e118]:
+                - generic [ref=f1e119]:
+                  - generic [ref=f1e120]: Top-K 召回数
+                  - generic [ref=f1e121]: "5"
+                - slider [ref=f1e122]: "5"
+              - generic [ref=f1e123]:
+                - generic [ref=f1e124]:
+                  - generic [ref=f1e125]: 温度
+                  - generic [ref=f1e126]: "0.3"
+                - slider [ref=f1e127]: "0.3"
+              - generic [ref=f1e128]:
+                - generic [ref=f1e129] [cursor=pointer]:
+                  - switch "流式输出" [checked] [ref=f1e130]
+                  - generic [ref=f1e132]: 流式输出
+                - generic [ref=f1e133] [cursor=pointer]:
+                  - switch "携带历史上下文" [checked] [ref=f1e134]
+                  - generic [ref=f1e136]: 携带历史上下文
+        - generic [ref=f1e137]:
+          - generic [ref=f1e144]:
+            - paragraph [ref=f1e145]: 知识库助手
+            - paragraph [ref=f1e146]: 0 个知识库 · 混合检索 · Top-K 5
+          - generic [ref=f1e148]:
+            - heading "开始知识库问答" [level=3] [ref=f1e154]
+            - paragraph [ref=f1e155]: 系统将在选中的知识库中检索相关分块，并基于检索结果生成带引用溯源的回答。
+            - generic [ref=f1e156]:
+              - button "混合检索的权重应该如何配置？" [ref=f1e157] [cursor=pointer]
+              - button "两种分块策略有什么区别？" [ref=f1e158] [cursor=pointer]
+              - button "平台的权限体系是怎样设计的？" [ref=f1e159] [cursor=pointer]
+              - button "文档上传失败通常是什么原因？" [ref=f1e160] [cursor=pointer]
+          - generic [ref=f1e161]:
+            - generic [ref=f1e162]:
+              - textbox "输入你的问题，Enter 发送，Shift + Enter 换行…" [ref=f1e163]
+              - button "发送" [disabled] [ref=f1e164]
+            - paragraph [ref=f1e168]: 回答由大模型基于检索内容生成，请结合引用原文核对关键信息。

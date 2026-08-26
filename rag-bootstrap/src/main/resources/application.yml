@@ -9,6 +9,22 @@ spring:
   config:
     import:
       - classpath:application.public.yml
+  autoconfigure:
+    exclude:
+      # DashScope全部自动配置（由DashScopeModelAdapter适配器按需创建模型）
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeChatAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeEmbeddingAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAgentAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioSpeechAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioTranscriptionAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeImageAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeVideoAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeRerankAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAsyncToolCallingManagerAutoConfiguration
+      # Ollama全部自动配置（由OllamaModelAdapter适配器按需创建模型）
+      - org.springframework.ai.model.ollama.autoconfigure.OllamaChatAutoConfiguration
+      - org.springframework.ai.model.ollama.autoconfigure.OllamaEmbeddingAutoConfiguration
+      
   application:
     name: rag-vector-tool
   servlet:
@@ -29,6 +45,11 @@ spring:
       password: semine123456
       database: 0
       timeout: 5000ms
+  # ---------- OpenAI API Key（占位，满足spring-ai-starter-model-openai自动配置校验，
+  #   项目实际使用spring.ai.platform.models自定义配置，不走OpenAI官方API） ----------
+  ai:
+    openai:
+      api-key: unused
 
 server:
   port: 8080
@@ -80,7 +101,7 @@ rag:
     chat-model: qwen-turbo
     # 查询改写开关（多轮上下文补全 + 复杂查询优化，失败自动降级为原始查询）
     rewrite-enabled: true
-    # 查询改写模型（为空时复用 chat-model）
+    # 查询改写模型（为空时复用 chat-model）0
     rewrite-model:
     # 上下文窗口 Token 预算（召回片段按相似度优先级截断）
     context-window-tokens: 6000

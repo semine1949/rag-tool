@@ -1,0 +1,45 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - generic [ref=e11]:
+      - heading "NebulaKB" [level=1] [ref=e12]
+      - paragraph [ref=e13]: 企业级 RAG 知识库平台
+    - heading "让企业知识 可检索、可溯源" [level=2] [ref=e14]
+    - paragraph [ref=e15]: 统一接入多源文档，构建向量与关键词双通道检索，配合大模型生成带引用溯源的精准回答， 全流程支持多租户隔离与细粒度权限管控。
+    - generic [ref=e16]:
+      - generic [ref=e23]:
+        - paragraph [ref=e24]: 三级数据隔离
+        - paragraph [ref=e25]: 租户 → 知识库 → 向量集合逐层隔离，跨租户数据零泄漏
+      - generic [ref=e31]:
+        - paragraph [ref=e32]: 三种检索模式
+        - paragraph [ref=e33]: 纯向量 / 纯关键词 / 混合加权融合，按场景灵活切换
+      - generic [ref=e39]:
+        - paragraph [ref=e40]: 四级 RBAC 权限
+        - paragraph [ref=e41]: 租户管理员到只读访客，细粒度控制到知识库维度
+  - generic [ref=e42]:
+    - generic [ref=e43]:
+      - generic [ref=e45]:
+        - button "登录" [ref=e46] [cursor=pointer]
+        - button "注册" [ref=e47] [cursor=pointer]
+      - generic [ref=e48]:
+        - generic [ref=e49]:
+          - generic [ref=e50]: 用户名
+          - textbox "用户名" [ref=e52]:
+            - /placeholder: 请输入用户名
+            - text: tenant_admin
+        - generic [ref=e53]:
+          - generic [ref=e54]: 密码
+          - textbox "密码" [ref=e56]:
+            - /placeholder: 请输入密码
+            - text: admin123
+        - generic [ref=e57]:
+          - generic [ref=e58] [cursor=pointer]:
+            - checkbox "记住登录状态" [checked] [ref=e59]
+            - text: 记住登录状态
+          - button "忘记密码？" [ref=e60] [cursor=pointer]
+        - button "登录平台" [disabled] [ref=e61]
+        - generic [ref=e62]:
+          - paragraph [ref=e63]: 演示账号（占位）
+          - generic [ref=e64]:
+            - generic [ref=e65]: tenant_admin / admin123
+            - generic [ref=e66]: li.wei · KB_ADMIN
+    - paragraph [ref=e67]: JWT 认证 · accessToken 2 小时 / refreshToken 7 天自动续期

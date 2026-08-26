@@ -179,9 +179,14 @@ public class AdminController {
     }
 
     @GetMapping("/kb/list")
-    public ResponseEntity<?> listKnowledgeBases(@RequestParam Long tenantId) {
+    public ResponseEntity<?> listKnowledgeBases() {
         Long userId = requireAuth();
-        requireTenantAdminOfTenant(userId, tenantId);
+        // 从当前用户租户归属中推导 tenantId
+        List<UserTenantRole> utrs = userTenantRoleMapper.findByUserId(userId);
+        if (utrs.isEmpty()) {
+            return ResponseEntity.ok(Map.of("code", 200, "data", Collections.emptyList()));
+        }
+        Long tenantId = utrs.get(0).getTenantId();
         return ResponseEntity.ok(Map.of("code", 200, "data", kbMapper.findByTenantId(tenantId)));
     }
 

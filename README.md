@@ -180,35 +180,6 @@ curl -X POST http://localhost:8080/api/rag/chat/stream \
 
 ---
 
-## 🖥 前端控制台
-
-配套 React Web 管理控制台，提供可视化知识库管理、文档上传、参数配置、流式问答交互等完整功能。
-
-```bash
-# 1. 进入前端目录
-cd rag-frontend
-
-# 2. 安装依赖
-npm install
-
-# 3. 开发模式启动（端口 3000，自动代理 API 到 localhost:8080）
-npm run dev
-
-# 4. 生产构建（输出到 rag-bootstrap/src/main/resources/static，与后端服务合一部署）
-npm run build
-```
-
-**主要页面**：
-
-| 页面 | 路径 | 说明 |
-|------|------|------|
-| 登录/注册 | `/login` `/register` | JWT 认证，Token 自动刷新 |
-| 知识库管理 | `/kb` | 列表/搜索/创建/删除/集合操作 |
-| 知识库配置 | `/kb/:id/config` | 检索模式/融合策略/重排/相似度阈值/Embedding 模型 |
-| 文档管理 | `/kb/:id/docs` | 上传/列表/集合初始化/清空/重处理 |
-| 问答交互 | `/chat` | 双模式（知识库/临时文档）/ SSE 流式 / 引用溯源 / 多轮对话 |
-| 租户管理 | `/tenant` | 创建租户/成员角色分配（TENANT_ADMIN） |
-| 用户管理 | `/users` | 创建用户（TENANT_ADMIN） |
 
 ---
 

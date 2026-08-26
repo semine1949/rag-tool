@@ -1,0 +1,63 @@
+- generic [ref=f3e3]:
+  - complementary [ref=f3e4]:
+    - generic [ref=f3e10]:
+      - paragraph [ref=f3e11]: NebulaKB
+      - paragraph [ref=f3e12]: 企业级 RAG 平台
+    - navigation [ref=f3e13]:
+      - generic [ref=f3e14]:
+        - paragraph [ref=f3e15]: 工作台
+        - list [ref=f3e16]:
+          - listitem [ref=f3e17]:
+            - link "概览" [ref=f3e18] [cursor=pointer]:
+              - /url: /dashboard
+          - listitem [ref=f3e25]:
+            - link "智能问答" [ref=f3e26] [cursor=pointer]:
+              - /url: /chat
+      - generic [ref=f3e30]:
+        - paragraph [ref=f3e31]: 内容管理
+        - list [ref=f3e32]:
+          - listitem [ref=f3e33]:
+            - link "知识库管理" [ref=f3e34] [cursor=pointer]:
+              - /url: /kbs
+          - listitem [ref=f3e41]:
+            - link "文档管理" [ref=f3e42] [cursor=pointer]:
+              - /url: /docs
+      - generic [ref=f3e48]:
+        - paragraph [ref=f3e49]: 租户与权限
+        - list [ref=f3e50]:
+          - listitem [ref=f3e51]:
+            - link "租户管理" [ref=f3e52] [cursor=pointer]:
+              - /url: /tenants
+          - listitem [ref=f3e58]:
+            - link "用户管理" [ref=f3e59] [cursor=pointer]:
+              - /url: /users
+          - listitem [ref=f3e66]:
+            - link "角色权限" [ref=f3e67] [cursor=pointer]:
+              - /url: /roles
+    - paragraph [ref=f3e73]: 版本 v1.0.0 · Mock 模式
+  - generic [ref=f3e74]:
+    - banner [ref=f3e75]:
+      - generic [ref=f3e76]:
+        - heading "知识库管理" [level=1] [ref=f3e77]
+        - paragraph [ref=f3e78]: 管理知识库配置、检索模式与向量集合
+      - textbox "搜索知识库、文档…" [ref=f3e80]
+      - button "通知" [ref=f3e81] [cursor=pointer]
+      - button "TE tenant_admin Acme 智能科技" [ref=f3e87] [cursor=pointer]:
+        - generic [ref=f3e88]: TE
+        - generic [ref=f3e89]:
+          - generic [ref=f3e90]: tenant_admin
+          - generic [ref=f3e91]: Acme 智能科技
+    - main [ref=f3e92]:
+      - generic [ref=f3e94]:
+        - generic [ref=f3e95]:
+          - textbox "搜索知识库名称或描述" [ref=f3e99]
+          - generic [ref=f3e100]:
+            - button "全部 0" [ref=f3e101] [cursor=pointer]:
+              - text: 全部
+              - generic [ref=f3e102]: "0"
+            - button "混合" [ref=f3e103] [cursor=pointer]
+            - button "向量" [ref=f3e104] [cursor=pointer]
+            - button "关键词" [ref=f3e105] [cursor=pointer]
+        - generic [ref=f3e106]:
+          - button "刷新" [ref=f3e107] [cursor=pointer]
+          - button "新建知识库" [ref=f3e111] [cursor=pointer]
