@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
  * @author rag-tool
  * @since 1.0
  */
-@Component
+
 public class OllamaModelAdapter implements ModelAdapter {
 
     @Override

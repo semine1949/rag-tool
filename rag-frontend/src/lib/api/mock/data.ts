@@ -168,7 +168,7 @@ export const mockRoles: Role[] = [
 export const mockUsers: UserItem[] = [
   {
     id: 1,
-    username: 'tenant_admin',
+    username: 'admin',
     email: 'admin@acme.com',
     tenantId: 1,
     tenantName: 'Acme 智能科技',
@@ -305,7 +305,7 @@ export const mockKbs: KnowledgeBase[] = [
     collectionStatus: 'READY',
     createdAt: daysAgo(110),
     updatedAt: daysAgo(3, 17, 40),
-    owner: 'tenant_admin',
+    owner: 'admin',
   },
   {
     id: 4,
@@ -365,7 +365,7 @@ export const mockKbs: KnowledgeBase[] = [
     collectionStatus: 'UNINITIALIZED',
     createdAt: daysAgo(14),
     updatedAt: daysAgo(14),
-    owner: 'tenant_admin',
+    owner: 'admin',
   },
 ];
 
@@ -428,7 +428,7 @@ export const mockDocs: DocumentItem[] = docSeeds.map((s, i) => {
     version,
     status,
     chunkStrategy: kb.chunkStrategy,
-    uploadedBy: ['li.wei', 'zhang.min', 'tenant_admin', 'wang.fang'][i % 4],
+    uploadedBy: ['li.wei', 'zhang.min', 'admin', 'wang.fang'][i % 4],
     uploadedAt: daysAgo(i * 2 + 1, 9 + (i % 8), (i * 7) % 60),
     errorMsg: status === 'FAILED' ? 'PDF 解析失败：文件已加密或内容为纯扫描图像' : undefined,
   };
@@ -471,7 +471,7 @@ export const mockActivities: ActivityItem[] = [
   },
   {
     id: 5,
-    actor: 'tenant_admin',
+    actor: 'admin',
     action: '新增用户',
     target: 'wang.fang · KB_ADMIN',
     time: minutesAgo(96),

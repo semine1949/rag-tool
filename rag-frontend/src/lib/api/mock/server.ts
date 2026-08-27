@@ -79,9 +79,9 @@ function fakeJwt(payload: Record<string, unknown>, ttlSec: number): string {
   return `${header}.${body}.mock-signature`;
 }
 
-/** 默认演示账号 */
+/** 默认演示账号：与真实后端启动时创建的 admin 账号保持一致 */
 const DEMO_ACCOUNTS: Record<string, { password: string; userId: number }> = {
-  tenant_admin: { password: 'admin123', userId: 1 },
+  admin: { password: 'admin123', userId: 1 },
   'li.wei': { password: 'admin123', userId: 2 },
   'zhang.min': { password: 'admin123', userId: 3 },
   'chen.hao': { password: 'admin123', userId: 4 },
@@ -221,7 +221,7 @@ export const mockServer = {
       collectionStatus: 'UNINITIALIZED',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      owner: 'tenant_admin',
+      owner: 'admin',
     };
     db.kbs.unshift(kb);
     return kb;
@@ -309,7 +309,7 @@ export const mockServer = {
       version: 1,
       status: 'PROCESSING',
       chunkStrategy: options.chunkStrategy,
-      uploadedBy: 'tenant_admin',
+      uploadedBy: 'admin',
       uploadedAt: new Date().toISOString(),
     };
     db.docs.unshift(doc);
@@ -324,7 +324,7 @@ export const mockServer = {
 
     db.activities.unshift({
       id: nextId(),
-      actor: 'tenant_admin',
+      actor: 'admin',
       action: '上传文档',
       target: file.name,
       time: new Date().toISOString(),

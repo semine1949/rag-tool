@@ -81,6 +81,8 @@ export interface LoginResponse extends AuthTokens {
 export interface CurrentUser {
   id: number;
   username: string;
+  /** 展示名，后端昵称 */
+  nickname?: string;
   email: string;
   tenantId: number;
   tenantCode: string;
@@ -93,6 +95,16 @@ export interface CurrentUser {
 
 export interface RefreshRequest {
   refreshToken: string;
+}
+
+/** 后端 /auth/me 返回的原始结构（数据在 data 字段内） */
+export interface BackendMe {
+  userId: number;
+  username: string;
+  nickname?: string;
+  roleCode?: RoleCode | null;
+  roleName?: string | null;
+  tenantId?: number;
 }
 
 /* ============ 租户 / 用户 ============ */
@@ -278,6 +290,8 @@ export interface ChatRequest {
   temperature: number;
   /** 是否携带历史上下文 */
   withHistory: boolean;
+  /** 多轮会话 ID（后端续接上下文用，可选） */
+  sessionId?: string;
 }
 
 export interface ChatResponse {
@@ -286,6 +300,8 @@ export interface ChatResponse {
   model: string;
   tokenUsage?: number;
   costMs?: number;
+  /** 多轮会话 ID（真实后端返回） */
+  sessionId?: string;
 }
 
 /** SSE 流式事件 */

@@ -59,6 +59,8 @@ export function ChatPage() {
   /** 当前流式请求的取消函数 */
   const cancelRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** 多轮会话 ID（真实后端续接上下文用） */
+  const sessionIdRef = useRef<string | null>(null);
 
   // 加载知识库与模型列表
   useEffect(() => {
@@ -137,12 +139,16 @@ export function ChatPage() {
       topK,
       temperature,
       withHistory,
+      // 多轮会话续接：携带上一轮的 sessionId（真实后端生效）
+      sessionId: withHistory ? sessionIdRef.current ?? undefined : undefined,
     };
 
     // 同步模式：一次性返回完整答案
     if (!streamMode) {
       try {
         const resp = await ragApi.chat(payload);
+        // 记录会话 ID 以便多轮续接
+        if (resp.sessionId) sessionIdRef.current = resp.sessionId;
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId

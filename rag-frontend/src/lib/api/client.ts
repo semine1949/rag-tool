@@ -126,8 +126,12 @@ http.interceptors.response.use(
       return Promise.reject(new ApiError('权限不足，无法执行该操作', 403));
     }
 
+    const respData = error.response?.data as
+      | { msg?: string; message?: string }
+      | undefined;
     const msg =
-      error.response?.data?.message ||
+      respData?.msg ||
+      respData?.message ||
       (error.code === 'ECONNABORTED' ? '请求超时，请稍后重试' : error.message) ||
       '网络异常';
     return Promise.reject(new ApiError(msg, status ?? -1));
@@ -136,14 +140,26 @@ http.interceptors.response.use(
 
 /* ================= 统一请求方法 ================= */
 
-/** 解包后端 ApiResult，失败抛出 ApiError */
-function unwrap<T>(body: ApiResult<T>): T {
+/**
+ * 解包后端响应，失败抛出 ApiError。
+ * 兼容两种契约：
+ *  - 标准包装：{ code, msg, data }
+ *  - 平铺结构：{ code:200, accessToken, userId, ... }（无 data 字段时返回整个 body 供调用方取字段）
+ * 后端错误消息使用 msg 字段，HTTP 非 2xx 时后端也在 body 中携带 code 与 msg。
+ */
+function unwrap<T>(body: ApiResult<T> | Record<string, unknown>): T {
   if (body == null) throw new ApiError('响应体为空');
-  // 兼容 code=0 与 code=200 两种成功约定
-  if (body.code !== undefined && body.code !== 0 && body.code !== 200) {
-    throw new ApiError(body.message || '请求失败', body.code);
+  // 兼容 code=0 / code=200 两种成功约定
+  const code = (body as { code?: number }).code;
+  if (code !== undefined && code !== 0 && code !== 200) {
+    const msg = (body as { msg?: string }).msg || (body as { message?: string }).message || '请求失败';
+    throw new ApiError(msg, code);
   }
-  return body.data;
+  // 有 data 字段取 data；无 data 字段（如登录/刷新/注册）返回整个 body，调用方按需取字段
+  if ('data' in body) {
+    return (body as ApiResult<T>).data;
+  }
+  return body as unknown as T;
 }
 
 export const request = {

@@ -12,7 +12,7 @@ import {
   type Column,
 } from '@/components/ui';
 import { IconDoc, IconRefresh, IconSearch, IconTrash } from '@/components/icons';
-import { adminApi, ragApi } from '@/lib/api';
+import { adminApi, ragApi, USE_MOCK } from '@/lib/api';
 import type {
   ChunkStrategy,
   DocStatus,
@@ -56,19 +56,42 @@ export function DocsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [kbFilter, setKbFilter] = useState('all');
 
-  const load = () => {
+  /**
+   * 加载知识库与文档。
+   * mock 模式：一次返回全部文档；真实后端：/rag/documents 必须传 kbId，
+   * 因此对每个知识库分别拉取后合并。
+   */
+  const load = async () => {
     setLoading(true);
-    Promise.all([ragApi.documents(), adminApi.listKbs()])
-      .then(([docList, kbList]) => {
+    try {
+      const kbList = await adminApi.listKbs();
+      setKbs(kbList);
+
+      if (USE_MOCK) {
+        const docList = await ragApi.documents(kbList[0]?.id ?? 1);
         setDocs(docList);
-        setKbs(kbList);
-      })
-      .catch((e: Error) => toast.error(e.message || '加载文档失败'))
-      .finally(() => setLoading(false));
+      } else {
+        // 真实后端：逐知识库拉取文档并合并，忽略单个库的异常
+        const grouped = await Promise.all(
+          kbList.map(async (kb) => {
+            try {
+              return await ragApi.documents(kb.id);
+            } catch {
+              return [];
+            }
+          }),
+        );
+        setDocs(grouped.flat());
+      }
+    } catch (e) {
+      toast.error((e as Error).message || '加载文档失败');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    load();
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -147,8 +170,11 @@ export function DocsPage() {
 
   const handleReprocess = async (doc: DocumentItem) => {
     try {
-      const updated = await adminApi.reprocessDoc(doc.id);
-      setDocs((prev) => prev.map((d) => (d.id === doc.id ? updated : d)));
+      await adminApi.reprocessDoc(doc.id);
+      // 置为处理中，等待后台完成
+      setDocs((prev) =>
+        prev.map((d) => (d.id === doc.id ? { ...d, status: 'PROCESSING' as const } : d)),
+      );
       toast.success('已提交重建索引任务');
     } catch (e) {
       toast.error((e as Error).message || '操作失败');

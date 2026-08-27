@@ -52,8 +52,8 @@ export function LoginPage() {
   /** 连续失败次数，用于锁定提示 */
   const [attempts, setAttempts] = useState(0);
 
-  // 登录表单
-  const [loginForm, setLoginForm] = useState({ username: 'tenant_admin', password: 'admin123' });
+  // 登录表单：真实后端启动时创建的是 admin / admin123（默认租户租户管理员）
+  const [loginForm, setLoginForm] = useState({ username: 'admin', password: 'admin123' });
   // 注册表单
   const [regForm, setRegForm] = useState({
     username: '',
@@ -256,10 +256,10 @@ export function LoginPage() {
                 </Button>
 
                 <div className="rounded-xl border border-line bg-black/20 px-3.5 py-3">
-                  <p className="mb-1.5 text-[11px] font-medium text-muted">演示账号（占位）</p>
+                  <p className="mb-1.5 text-[11px] font-medium text-muted">登录账号</p>
                   <div className="flex flex-wrap gap-1.5">
-                    <Badge tone="accent">tenant_admin / admin123</Badge>
-                    <Badge tone="neutral">li.wei · KB_ADMIN</Badge>
+                    <Badge tone="accent">admin / admin123</Badge>
+                    <Badge tone="neutral">后端启动时自动创建</Badge>
                   </div>
                 </div>
               </form>

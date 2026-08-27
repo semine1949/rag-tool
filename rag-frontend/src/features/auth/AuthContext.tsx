@@ -62,16 +62,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (payload: LoginRequest) => {
     const resp = await authApi.login(payload);
+    // 登录成功先落令牌，再拉取当前用户信息
     tokenStore.setTokens(resp);
-    tokenStore.setUser(resp.user);
-    setUser(resp.user);
+    let user = resp.user;
+    try {
+      user = await authApi.me();
+    } catch {
+      // /me 失败不阻断登录，使用登录响应中的占位用户
+      user = resp.user;
+    }
+    tokenStore.setUser(user);
+    setUser(user);
   }, []);
 
   const register = useCallback(async (payload: RegisterRequest) => {
     const resp = await authApi.register(payload);
     tokenStore.setTokens(resp);
-    tokenStore.setUser(resp.user);
-    setUser(resp.user);
+    let user = resp.user;
+    try {
+      user = await authApi.me();
+    } catch {
+      user = resp.user;
+    }
+    tokenStore.setUser(user);
+    setUser(user);
   }, []);
 
   const can = useCallback(
