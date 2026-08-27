@@ -30,6 +30,14 @@
         SELECT COUNT(1) FROM sys_user WHERE username = #{username}
     </select>
 
+    <!-- 用户列表：不返回 password_hash，避免敏感信息泄露 -->
+    <select id="findAll" resultMap="AuthUserResultMap">
+        SELECT user_id, username, nickname,
+               status, login_fail_count, last_login_time, create_time
+        FROM sys_user
+        ORDER BY create_time DESC
+    </select>
+
     <insert id="insert" useGeneratedKeys="true" keyProperty="userId" keyColumn="user_id">
         INSERT INTO sys_user (username, nickname, password_hash,
                               status, login_fail_count, last_login_time, create_time)

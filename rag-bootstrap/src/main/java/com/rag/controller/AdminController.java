@@ -73,7 +73,20 @@ public class AdminController {
                 .createTime(new Date())
                 .build();
         tenantMapper.insert(tenant);
-        log.info("租户创建成功: tenantId={}, tenantName={}", tenant.getTenantId(), tenantName);
+        // 内置初始化规则：创建租户后，自动将操作人授予该租户 TENANT_ADMIN，避免权限真空（谁创建、谁负责）
+        Role taRole = roleMapper.findByCode(TENANT_ADMIN);
+        if (taRole != null) {
+            UserTenantRole existing = userTenantRoleMapper.findByUserAndTenant(opUserId, tenant.getTenantId());
+            if (existing == null) {
+                userTenantRoleMapper.insert(UserTenantRole.builder()
+                        .userId(opUserId).tenantId(tenant.getTenantId()).roleId(taRole.getRoleId())
+                        .createTime(new Date()).build());
+            } else {
+                userTenantRoleMapper.updateRole(existing.getId(), taRole.getRoleId());
+            }
+        }
+        log.info("租户创建成功并初始化管理员: tenantId={}, tenantName={}, adminUserId={}",
+                tenant.getTenantId(), tenantName, opUserId);
         return ResponseEntity.ok(Map.of("code", 200, "data", tenant));
     }
 
@@ -92,7 +105,10 @@ public class AdminController {
     }
 
     /**
-     * 任命用户在指定租户的角色（覆盖式）
+     * 租户管理员指派运维接口。
+     * action 取值：
+     *   - GRANT  ：授予/升级指定用户在该租户的指定角色（一个租户允许多名管理员，授予非替换）
+     *   - REVOKE ：撤销指定用户在该租户的角色记录（移除管理员身份）
      */
     @PostMapping("/tenant/{tenantId}/members")
     public ResponseEntity<?> assignTenantRole(@PathVariable Long tenantId,
@@ -101,9 +117,24 @@ public class AdminController {
         requireTenantAdminOfTenant(opUserId, tenantId);
 
         Long userId = objToLong(body.get("userId"));
+        if (userId == null) {
+            return ResponseEntity.badRequest().body(Map.of("code", 400, "msg", "userId 必填"));
+        }
+        String action = body.getOrDefault("action", "GRANT").toString().toUpperCase();
+
+        // 撤销：删除该用户在此租户的角色绑定
+        if ("REVOKE".equals(action)) {
+            if (userId.equals(opUserId)) {
+                return ResponseEntity.badRequest().body(Map.of("code", 400, "msg", "不能撤销自己的租户管理员身份"));
+            }
+            userTenantRoleMapper.deleteByUserAndTenant(userId, tenantId);
+            log.info("已撤销用户租户角色: userId={}, tenantId={}", userId, tenantId);
+            return ResponseEntity.ok(Map.of("code", 200, "msg", "租户角色已撤销"));
+        }
+
+        // 授予：授予/升级指定角色
         String roleCode = (String) body.get("roleCode");
         validateRoleCode(roleCode);
-
         Role role = roleMapper.findByCode(roleCode);
         if (role == null) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "msg", "角色不存在: " + roleCode));
@@ -116,7 +147,8 @@ public class AdminController {
                     .userId(userId).tenantId(tenantId).roleId(role.getRoleId())
                     .createTime(new Date()).build());
         }
-        return ResponseEntity.ok(Map.of("code", 200, "msg", "租户角色已更新"));
+        log.info("已授予用户租户角色: userId={}, tenantId={}, roleCode={}", userId, tenantId, roleCode);
+        return ResponseEntity.ok(Map.of("code", 200, "msg", "租户角色已授予"));
     }
 
     // ==================== 用户管理 ====================
@@ -138,8 +170,80 @@ public class AdminController {
                 .status(1)
                 .build();
         user = authService.createUser(user);
+
+        // 联动：将用户绑定到所选租户并授予所选角色（写入 user_tenant_role）
+        Long tenantId = objToLong(body.get("tenantId"));
+        Object roleCodesObj = body.get("roleCodes");
+        String boundRoleCode = null;
+        if (tenantId != null && roleCodesObj instanceof List<?> roleList && !roleList.isEmpty()) {
+            // 数据模型为一用户一租户一角色（user_tenant_role 按 user+tenant 唯一），取第一个所选角色绑定
+            String roleCode = roleList.get(0) == null ? null : roleList.get(0).toString();
+            if (roleCode != null && !roleCode.isBlank()) {
+                validateRoleCode(roleCode);
+                Role role = roleMapper.findByCode(roleCode);
+                if (role != null) {
+                    UserTenantRole existing = userTenantRoleMapper.findByUserAndTenant(user.getUserId(), tenantId);
+                    if (existing != null) {
+                        userTenantRoleMapper.updateRole(existing.getId(), role.getRoleId());
+                    } else {
+                        userTenantRoleMapper.insert(UserTenantRole.builder()
+                                .userId(user.getUserId()).tenantId(tenantId).roleId(role.getRoleId())
+                                .createTime(new Date()).build());
+                    }
+                    boundRoleCode = roleCode;
+                }
+            }
+        }
+        log.info("创建用户并绑定租户角色: userId={}, username={}, tenantId={}, roleCode={}",
+                user.getUserId(), username, tenantId, boundRoleCode);
         return ResponseEntity.ok(Map.of("code", 200,
-                "data", Map.of("userId", user.getUserId(), "username", username)));
+                "data", Map.of("userId", user.getUserId(), "username", username,
+                        "tenantId", tenantId, "roleCode", boundRoleCode)));
+    }
+
+    /**
+     * 用户列表（管理端）
+     * 返回全部用户及其所属租户与角色，供管理页展示与创建用户时选择租户。
+     * data: [{ userId, username, nickname, status, createTime, tenantId, tenantName, roleCodes: [] }]
+     */
+    @GetMapping("/user")
+    public ResponseEntity<?> listUsers() {
+        Long opUserId = requireAuth();
+        requireTenantAdminAnywhere(opUserId);
+
+        List<AuthUser> users = userMapper.findAll();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (AuthUser u : users) {
+            // 该用户的全部租户角色绑定
+            List<UserTenantRole> utrs = userTenantRoleMapper.findByUserId(u.getUserId());
+            // 取第一个绑定租户作为默认所属（一个用户通常属于一个主租户）
+            Long tenantId = utrs.isEmpty() ? null : utrs.get(0).getTenantId();
+            String tenantName = null;
+            if (tenantId != null) {
+                Tenant t = tenantMapper.findById(tenantId);
+                tenantName = t != null ? t.getTenantName() : null;
+            }
+            // 收集角色编码
+            List<String> roleCodes = new ArrayList<>();
+            if (!utrs.isEmpty()) {
+                List<Long> roleIds = utrs.stream().map(UserTenantRole::getRoleId).collect(Collectors.toList());
+                List<Role> roles = roleMapper.findByIds(roleIds);
+                for (Role r : roles) {
+                    if (r != null) roleCodes.add(r.getRoleCode());
+                }
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("userId", u.getUserId());
+            item.put("username", u.getUsername());
+            item.put("nickname", u.getNickname());
+            item.put("status", u.getStatus());
+            item.put("createTime", u.getCreateTime());
+            item.put("tenantId", tenantId);
+            item.put("tenantName", tenantName);
+            item.put("roleCodes", roleCodes);
+            result.add(item);
+        }
+        return ResponseEntity.ok(Map.of("code", 200, "data", result));
     }
 
     @GetMapping("/role/list")

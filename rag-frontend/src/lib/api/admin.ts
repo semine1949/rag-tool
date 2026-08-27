@@ -14,9 +14,11 @@ import {
   mapKb,
   mapRole,
   mapTenant,
+  mapUser,
   type BackendKb,
   type BackendRole,
   type BackendTenant,
+  type BackendUser,
 } from './adapter';
 import { mockServer } from './mock/server';
 
@@ -48,6 +50,25 @@ export const adminApi = {
     return mapTenant(created);
   },
 
+  /**
+   * 租户管理员指派：为指定用户授予或撤销其在某租户的 TENANT_ADMIN 角色。
+   * 对应后端 POST /api/admin/tenant/{tenantId}/members，body: { userId, action, roleCode }
+   */
+  async assignTenantRole(
+    tenantId: number,
+    payload: {
+      userId: number;
+      action: 'GRANT' | 'REVOKE';
+      roleCode: 'TENANT_ADMIN';
+    },
+  ): Promise<void> {
+    if (USE_MOCK) {
+      // mock：演示指派成功
+      return Promise.resolve();
+    }
+    await request.post<void>(`/admin/tenant/${tenantId}/members`, payload);
+  },
+
   /** 后端仅支持租户成员角色任命，无独立的启用/停用接口；此方法为占位兼容 */
   async updateTenantStatus(id: number, status: Tenant['status']): Promise<Tenant> {
     if (USE_MOCK) return mockServer.updateTenantStatus(id, status);
@@ -63,16 +84,19 @@ export const adminApi = {
 
   async listUsers(): Promise<UserItem[]> {
     if (USE_MOCK) return mockServer.listUsers();
-    // 后端无独立的用户列表接口，角色列表亦无用户维度；暂返回空并提示
-    throw new Error('后端未提供用户列表接口，请接入 auth/user 查询或调整实现');
+    const list = await request.get<BackendUser[]>('/admin/user');
+    return list.map(mapUser);
   },
 
   async createUser(payload: CreateUserRequest): Promise<UserItem> {
     if (USE_MOCK) return mockServer.createUser(payload);
+    // 同时提交所属租户与角色，后端创建用户后联动写入 user_tenant_role
     const created = await request.post<{ userId: number; username: string }>('/admin/user', {
       username: payload.username,
       password: payload.password,
       nickname: payload.email,
+      tenantId: payload.tenantId,
+      roleCodes: payload.roles,
     });
     return {
       id: created.userId,

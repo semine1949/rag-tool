@@ -216,7 +216,8 @@ export const mockUsers: UserItem[] = [
     email: 'wang.fang@globex.cn',
     tenantId: 2,
     tenantName: 'Globex 金融研究院',
-    roles: ['KB_ADMIN', 'CONTRIBUTOR'],
+    // 数据模型为一用户一租户一角色，mock 保持一致（单一角色）
+    roles: ['KB_ADMIN'],
     status: 'ACTIVE',
     createdAt: daysAgo(58),
     lastLoginAt: minutesAgo(320),

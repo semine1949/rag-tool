@@ -7,6 +7,18 @@ import type {
   UserItem,
 } from '@/lib/types';
 
+/** 后端用户列表实体：{userId, username, nickname, status, createTime, tenantId, tenantName, roleCodes[]} */
+export interface BackendUser {
+  userId: number;
+  username: string;
+  nickname?: string | null;
+  status: number;
+  createTime?: string;
+  tenantId?: number | null;
+  tenantName?: string | null;
+  roleCodes?: string[] | null;
+}
+
 /**
  * 后端实体 -> 前端类型 映射层
  * 后端字段命名与前端类型存在差异（如 tenantId vs id、status 数字 vs 枚举），在此统一转换，
@@ -143,6 +155,21 @@ export function mapKb(kb: BackendKb): KnowledgeBase {
     createdAt: kb.createTime ?? '',
     updatedAt: kb.createTime ?? '',
     owner: '',
+  };
+}
+
+export function mapUser(u: BackendUser): UserItem {
+  return {
+    id: u.userId,
+    username: u.username,
+    email: u.nickname ?? '',
+    tenantId: u.tenantId ?? 0,
+    tenantName: u.tenantName ?? '',
+    roles: (u.roleCodes ?? []).filter((c): c is RoleCode =>
+      ['TENANT_ADMIN', 'KB_ADMIN', 'CONTRIBUTOR', 'VIEWER'].includes(c),
+    ),
+    status: toUserStatus(u.status),
+    createdAt: u.createTime ?? '',
   };
 }
 

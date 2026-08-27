@@ -43,6 +43,13 @@ export function TenantsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // 租户管理员指派
+  const [memberTenant, setMemberTenant] = useState<Tenant | null>(null);
+  const [memberUserId, setMemberUserId] = useState('');
+  const [memberAction, setMemberAction] = useState<'GRANT' | 'REVOKE'>('GRANT');
+  const [memberSubmitting, setMemberSubmitting] = useState(false);
+  const [memberError, setMemberError] = useState('');
+
   const load = () => {
     setLoading(true);
     adminApi
@@ -81,18 +88,6 @@ export function TenantsPage() {
     }
   };
 
-  /** 切换租户启用/停用状态 */
-  const handleToggleStatus = async (t: Tenant) => {
-    const next: TenantStatus = t.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
-    try {
-      const updated = await adminApi.updateTenantStatus(t.id, next);
-      setTenants((prev) => prev.map((x) => (x.id === t.id ? updated : x)));
-      toast.success(next === 'ACTIVE' ? '租户已启用' : '租户已停用');
-    } catch (e) {
-      toast.error((e as Error).message || '操作失败');
-    }
-  };
-
   const handleDelete = async (t: Tenant) => {
     if (!window.confirm(`确认删除租户「${t.name}」？其下全部用户、知识库与向量集合将被清除。`)) {
       return;
@@ -103,6 +98,39 @@ export function TenantsPage() {
       toast.success('租户已删除');
     } catch (e) {
       toast.error((e as Error).message || '删除失败');
+    }
+  };
+
+  /** 提交租户管理员指派（授予/撤销 TENANT_ADMIN） */
+  const handleAssignMember = async () => {
+    if (!memberTenant) return;
+    setMemberError('');
+
+    const userId = Number(memberUserId.trim());
+    if (!Number.isInteger(userId) || userId <= 0) {
+      setMemberError('请输入有效的用户 ID');
+      return;
+    }
+
+    setMemberSubmitting(true);
+    try {
+      await adminApi.assignTenantRole(memberTenant.id, {
+        userId,
+        action: memberAction,
+        roleCode: 'TENANT_ADMIN',
+      });
+      toast.success(
+        memberAction === 'GRANT'
+          ? `已将用户 #${userId} 授予为「${memberTenant.name}」租户管理员`
+          : `已撤销用户 #${userId} 在「${memberTenant.name}」的管理员身份`,
+      );
+      setMemberTenant(null);
+      setMemberUserId('');
+      setMemberAction('GRANT');
+    } catch (e) {
+      setMemberError((e as Error).message || '操作失败');
+    } finally {
+      setMemberSubmitting(false);
     }
   };
 
@@ -188,8 +216,17 @@ export function TenantsPage() {
       align: 'right',
       render: (t) => (
         <div className="flex items-center justify-end gap-1.5">
-          <Button variant="ghost" size="sm" onClick={() => void handleToggleStatus(t)}>
-            {t.status === 'ACTIVE' ? '停用' : '启用'}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setMemberTenant(t);
+              setMemberUserId('');
+              setMemberAction('GRANT');
+              setMemberError('');
+            }}
+          >
+            指派管理员
           </Button>
           <Button
             variant="ghost"
@@ -246,7 +283,7 @@ export function TenantsPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         title="创建租户"
-        description="租户创建后处于待激活状态，需分配管理员账号后启用"
+        description="创建后系统自动将您授予为该租户的租户管理员（谁创建、谁负责），并可通过「指派管理员」新增或撤销管理员"
         footer={
           <>
             <Button variant="secondary" onClick={() => setCreateOpen(false)} disabled={submitting}>
@@ -299,6 +336,77 @@ export function TenantsPage() {
             hint="超出配额后将拒绝新文档上传"
           />
         </form>
+      </Modal>
+
+      {/* 租户管理员指派弹窗 */}
+      <Modal
+        open={!!memberTenant}
+        onClose={() => setMemberTenant(null)}
+        title={`指派管理员 · ${memberTenant?.name ?? ''}`}
+        description="为一个租户允许多名租户管理员。授予用于新增/升级管理员，撤销用于移除管理员身份。"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setMemberTenant(null)} disabled={memberSubmitting}>
+              取消
+            </Button>
+            <Button
+              variant={memberAction === 'REVOKE' ? 'danger' : 'primary'}
+              onClick={() => void handleAssignMember()}
+              loading={memberSubmitting}
+            >
+              {memberAction === 'GRANT' ? '授予管理员' : '撤销管理员'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {memberError && (
+            <div className="rounded-xl border border-danger/30 bg-danger/10 px-3.5 py-2.5">
+              <p className="text-xs text-danger">{memberError}</p>
+            </div>
+          )}
+
+          {/* 授予 / 撤销 切换 */}
+          <div className="grid grid-cols-2 gap-2.5">
+            {(['GRANT', 'REVOKE'] as const).map((action) => (
+              <button
+                key={action}
+                type="button"
+                onClick={() => setMemberAction(action)}
+                className={
+                  memberAction === action
+                    ? action === 'GRANT'
+                      ? 'rounded-xl border border-accent/50 bg-grad-soft px-3 py-2.5 text-xs font-semibold text-text'
+                      : 'rounded-xl border border-danger/50 bg-danger/10 px-3 py-2.5 text-xs font-semibold text-text'
+                    : 'rounded-xl border border-line bg-white/[0.03] px-3 py-2.5 text-xs text-muted hover:bg-white/[0.06]'
+                }
+              >
+                {action === 'GRANT' ? '授予 TENANT_ADMIN' : '撤销 TENANT_ADMIN'}
+              </button>
+            ))}
+          </div>
+
+          <Input
+            label="目标用户 ID"
+            type="number"
+            min={1}
+            placeholder="输入后端用户表中的 userId"
+            value={memberUserId}
+            onChange={(e) => setMemberUserId(e.target.value)}
+            hint={
+              memberAction === 'GRANT'
+                ? '授予该用户为此租户的租户管理员（可反复新增多名）'
+                : '撤销该用户在此租户的管理员身份'
+            }
+          />
+
+          <div className="rounded-xl border border-line bg-black/20 px-3.5 py-3">
+            <p className="text-[11px] leading-relaxed text-muted">
+              边界说明：创建租户时会自动将创建人设为本租户管理员（一次性内置规则）；此处为可反复执行的
+              运维指派能力，二者职责分离、互不替代。
+            </p>
+          </div>
+        </div>
       </Modal>
     </div>
   );

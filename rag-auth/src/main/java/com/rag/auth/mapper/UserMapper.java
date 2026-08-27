@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.Date;
+import java.util.List;
 
 /**
  * 用户表 MyBatis Mapper (Multi-Tenant v2)
@@ -15,6 +16,9 @@ public interface UserMapper {
     AuthUser findById(@Param("userId") Long userId);
 
     AuthUser findByUsername(@Param("username") String username);
+
+    /** 查询全部用户（不含密码哈希），供管理端用户列表使用 */
+    List<AuthUser> findAll();
 
     Integer existsByUsername(@Param("username") String username);
 

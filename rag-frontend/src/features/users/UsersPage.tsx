@@ -3,7 +3,6 @@ import {
   Badge,
   Button,
   Card,
-  Checkbox,
   Input,
   Modal,
   Select,
@@ -62,21 +61,36 @@ export function UsersPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const load = () => {
+  /**
+   * 加载用户与租户列表。
+   * 租户列表与用户列表分开加载、互相降级：任一方失败不阻塞另一方，
+   * 确保创建用户时「所属租户」下拉框始终可用。
+   */
+  const load = async () => {
     setLoading(true);
-    Promise.all([adminApi.listUsers(), adminApi.listTenants()])
-      .then(([userList, tenantList]) => {
-        setUsers(userList);
-        setTenants(tenantList);
-        // 默认选中第一个租户
-        setForm((f) => ({ ...f, tenantId: f.tenantId || tenantList[0]?.id || 0 }));
-      })
-      .catch((e: Error) => toast.error(e.message || '加载用户失败'))
-      .finally(() => setLoading(false));
+    // 先加载租户（创建用户下拉框依赖），失败则清空并提示
+    try {
+      const tenantList = await adminApi.listTenants();
+      setTenants(tenantList);
+      // 默认选中第一个租户
+      setForm((f) => ({ ...f, tenantId: f.tenantId || tenantList[0]?.id || 0 }));
+    } catch (e) {
+      setTenants([]);
+      toast.error((e as Error).message || '加载租户列表失败');
+    }
+    // 再加载用户列表，失败降级为空表
+    try {
+      const userList = await adminApi.listUsers();
+      setUsers(userList);
+    } catch (e) {
+      setUsers([]);
+      toast.warning((e as Error).message || '加载用户列表失败');
+    }
+    setLoading(false);
   };
 
   useEffect(() => {
-    load();
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -141,12 +155,9 @@ export function UsersPage() {
     }
   };
 
-  /** 切换创建表单中的角色勾选 */
+  /** 单选角色：点击即选中该角色（同一租户下每位用户绑定一个角色） */
   const toggleRole = (role: RoleCode) => {
-    setForm((f) => ({
-      ...f,
-      roles: f.roles.includes(role) ? f.roles.filter((r) => r !== role) : [...f.roles, role],
-    }));
+    setForm((f) => ({ ...f, roles: [role] }));
   };
 
   const columns: Column<UserItem>[] = [
@@ -331,26 +342,43 @@ export function UsersPage() {
             options={tenants.map((t) => ({ value: String(t.id), label: `${t.name}（${t.code}）` }))}
           />
 
-          {/* 角色多选 */}
+          {/* 角色单选：数据模型为一用户一租户一角色，创建用户时联动写入所选角色 */}
           <div>
             <label className="mb-2 block text-xs font-medium text-muted">分配角色</label>
             <div className="space-y-2">
-              {ALL_ROLES.map((role) => (
-                <label
-                  key={role}
-                  className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-line bg-white/[0.03] px-3.5 py-2.5 transition-colors hover:bg-white/[0.06]"
-                >
-                  <Checkbox
-                    checked={form.roles.includes(role)}
-                    onChange={() => toggleRole(role)}
-                    label={ROLE_LABEL[role]}
-                  />
-                  <Badge tone={ROLE_TONE[role]}>{role}</Badge>
-                </label>
-              ))}
+              {ALL_ROLES.map((role) => {
+                const active = form.roles.includes(role);
+                return (
+                  <label
+                    key={role}
+                    onClick={() => toggleRole(role)}
+                    className={
+                      'flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ' +
+                      (active
+                        ? 'border-accent/50 bg-grad-soft'
+                        : 'border-line bg-white/[0.03] hover:bg-white/[0.06]')
+                    }
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <span
+                        className={
+                          'flex h-4 w-4 items-center justify-center rounded-full border ' +
+                          (active ? 'border-transparent bg-grad' : 'border-line-2 bg-black/30')
+                        }
+                      >
+                        {active && <span className="h-1.5 w-1.5 rounded-full bg-[#04121a]" />}
+                      </span>
+                      <span className={active ? 'text-xs font-medium text-text' : 'text-xs text-muted'}>
+                        {ROLE_LABEL[role]}
+                      </span>
+                    </span>
+                    <Badge tone={ROLE_TONE[role]}>{role}</Badge>
+                  </label>
+                );
+              })}
             </div>
             <p className="mt-2 text-[10px] text-muted-2">
-              可同时分配多个角色，最终权限为各角色权限的并集
+              同一租户下每位用户绑定一个角色，创建后写入 user_tenant_role
             </p>
           </div>
         </form>
