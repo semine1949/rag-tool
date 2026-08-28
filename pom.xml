@@ -43,6 +43,8 @@
         <minio.version>8.5.7</minio.version>
         <!-- 锁定 commons-compress 版本，解决 Tika/POI 冲突导致的 NoSuchMethodError -->
         <commons-compress.version>1.26.0</commons-compress.version>
+        <!-- 统一 POI 版本为 5.4.0，与 Tika 3.1.0 传递引入的 poi-scratchpad 一致，避免 PoiLogManager NoClassDefFoundError -->
+        <poi.version>5.4.0</poi.version>
     </properties>
 
     <dependencyManagement>
@@ -158,6 +160,28 @@
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-compress</artifactId>
                 <version>${commons-compress.version}</version>
+            </dependency>
+
+            <!-- POI：统一 5.4.0，与 Tika 3.1.0 的 poi-scratchpad 一致，解决 PoiLogManager NoClassDefFoundError -->
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi</artifactId>
+                <version>${poi.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml</artifactId>
+                <version>${poi.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml-lite</artifactId>
+                <version>${poi.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-scratchpad</artifactId>
+                <version>${poi.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

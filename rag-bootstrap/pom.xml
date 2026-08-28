@@ -74,10 +74,10 @@
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>okhttp</artifactId>
         </dependency>
+        <!-- POI 版本统一由父 pom dependencyManagement 管理（poi.version=5.4.0），与 Tika 的 poi-scratchpad 一致 -->
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
-            <version>5.2.5</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.ai</groupId>
