@@ -355,6 +355,16 @@ export interface ModelOption {
   dimension?: number;
 }
 
+/** 后端 /admin/kb/models 返回的原始模型项（provider/type 为字符串） */
+export interface BackendModel {
+  id: string;
+  name: string;
+  provider: string;
+  type: 'chat' | 'embedding';
+  available: boolean;
+  dimension?: number;
+}
+
 /* ============ 仪表盘 ============ */
 
 export interface DashboardMetric {

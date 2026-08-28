@@ -1,4 +1,5 @@
 import type {
+  BackendModel,
   CreateKbRequest,
   CreateTenantRequest,
   CreateUserRequest,
@@ -230,21 +231,23 @@ export const adminApi = {
     throw new Error('后端未提供仪表盘统计接口 /api/admin/dashboard');
   },
 
-  /** 后端未提供模型列表接口 */
+  /**
+   * 模型列表：对接真实后端接口 /admin/kb/models，返回配置中的对话(CHAT)与嵌入(EMBEDDING)模型。
+   * 后端按 spring.ai.platform.models 配置动态返回，Embedding 维度取自 rag.embedding。
+   */
   async models(): Promise<ModelOption[]> {
     if (USE_MOCK) return mockServer.models();
-    // 返回后端对话默认模型占位，供聊天页选择
-    return [
-      { id: 'qwen-turbo', name: 'Qwen-Turbo（默认）', provider: 'dashscope', type: 'chat', available: true },
-      { id: 'qwen-max', name: 'Qwen-Max', provider: 'dashscope', type: 'chat', available: true },
-      {
-        id: 'text-embedding-v3',
-        name: 'text-embedding-v3',
-        provider: 'dashscope',
-        type: 'embedding',
-        available: true,
-        dimension: 1024,
-      },
-    ];
+    const list = await request.get<BackendModel[]>('/admin/kb/models');
+    return list.map((m) => ({
+      id: m.id,
+      name: m.name,
+      // 后端 provider 可能为 openai/siliconflow 等，前端仅消费 dashscope/ollama，统一归一化
+      provider: (m.provider === 'dashscope' || m.provider === 'ollama' ? m.provider : 'dashscope') as
+        | 'dashscope'
+        | 'ollama',
+      type: m.type === 'chat' ? 'chat' : 'embedding',
+      available: m.available ?? true,
+      dimension: m.type === 'embedding' ? m.dimension : undefined,
+    }));
   },
 };

@@ -6,8 +6,11 @@ import com.rag.auth.service.AuthServiceImpl;
 import com.rag.auth.service.KbAccessService;
 import com.rag.auth.service.KbConfigService;
 import com.rag.common.entity.config.EmbeddingConfig;
+import com.rag.common.entity.config.EmbeddingProperties;
 import com.rag.common.entity.*;
+import com.rag.common.enums.ModelCategory;
 import com.rag.common.exception.RagException;
+import com.rag.config.properties.AiModelProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -35,6 +38,8 @@ public class AdminController {
     private final KbAccessService kbAccessService;
     private final KbConfigService kbConfigService;
     private final AuthServiceImpl authService;
+    private final AiModelProperties aiModelProperties;
+    private final EmbeddingProperties embeddingProperties;
 
     public AdminController(TenantMapper tenantMapper,
                            UserMapper userMapper,
@@ -44,7 +49,9 @@ public class AdminController {
                            KbRolePermissionMapper kbRolePermissionMapper,
                            KbAccessService kbAccessService,
                            KbConfigService kbConfigService,
-                           AuthServiceImpl authService) {
+                           AuthServiceImpl authService,
+                           AiModelProperties aiModelProperties,
+                           EmbeddingProperties embeddingProperties) {
         this.tenantMapper = tenantMapper;
         this.userMapper = userMapper;
         this.kbMapper = kbMapper;
@@ -54,6 +61,8 @@ public class AdminController {
         this.kbAccessService = kbAccessService;
         this.kbConfigService = kbConfigService;
         this.authService = authService;
+        this.aiModelProperties = aiModelProperties;
+        this.embeddingProperties = embeddingProperties;
     }
 
     // ==================== 租户管理 ====================
@@ -308,6 +317,62 @@ public class AdminController {
         KnowledgeBase kb = kbConfigService.createKnowledgeBase(
                 tenantId, kbName, description, embeddingModel);
         return ResponseEntity.ok(Map.of("code", 200, "data", kb));
+    }
+
+    /**
+     * 模型列表接口：返回配置中的对话(CHAT)与嵌入(EMBEDDING)模型，供前端新建知识库 / 聊天页选择。
+     * Embedding 模型的向量维度从 rag.embedding 段按逻辑名取值。
+     */
+    @GetMapping("/kb/models")
+    public ResponseEntity<?> listModels() {
+        requireAuth();
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (aiModelProperties == null || aiModelProperties.getModels() == null) {
+            return ResponseEntity.ok(Map.of("code", 200, "data", result));
+        }
+        for (Map.Entry<String, AiModelProperties.ModelConfig> e : aiModelProperties.getModels().entrySet()) {
+            String logicName = e.getKey();
+            AiModelProperties.ModelConfig mc = e.getValue();
+            ModelCategory category = mc.getCategory();
+            boolean isEmbedding = category == ModelCategory.EMBEDDING;
+            boolean isChat = category == ModelCategory.CHAT;
+            if (!isEmbedding && !isChat) {
+                continue; // 仅返回对话与嵌入模型
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", logicName);
+            item.put("name", mc.getModelName() != null ? mc.getModelName() : logicName);
+            item.put("provider", mc.getProtocol() != null ? mc.getProtocol().name().toLowerCase() : "openai");
+            item.put("type", isEmbedding ? "embedding" : "chat");
+            item.put("available", true);
+            // Embedding 维度：按逻辑名映射 rag.embedding 下的 dim
+            if (isEmbedding) {
+                item.put("dimension", resolveEmbeddingDim(logicName));
+            }
+            result.add(item);
+        }
+        return ResponseEntity.ok(Map.of("code", 200, "data", result));
+    }
+
+    /**
+     * 解析 Embedding 模型的向量维度：将逻辑模型名映射到 rag.embedding.*.dim。
+     * 兼容 bge-m3 / tongyi / openai 三种逻辑名，未知则返回 null。
+     */
+    private Integer resolveEmbeddingDim(String logicName) {
+        if (embeddingProperties == null) {
+            return null;
+        }
+        String key = logicName.toLowerCase();
+        if (key.contains("bge")) {
+            return embeddingProperties.getBgeM3().getDim();
+        }
+        if (key.contains("tongyi") || key.contains("qwen")) {
+            return embeddingProperties.getTongyi().getDim();
+        }
+        if (key.contains("openai") || key.contains("text-embedding")) {
+            return embeddingProperties.getOpenai().getDim();
+        }
+        return null;
     }
 
     @GetMapping("/kb/list")
