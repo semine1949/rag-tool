@@ -96,21 +96,34 @@ public class AuthController {
         // 查询用户租户角色，取最高角色
         String roleCode = null;
         String roleName = null;
+        Long tenantId = null;
         List<UserTenantRole> utrs = userTenantRoleMapper.findByUserId(userId);
         if (!utrs.isEmpty()) {
-            // 按角色层级取最高：TENANT_ADMIN > KB_ADMIN > CONTRIBUTOR > VIEWER
+            // 按角色层级取最高：SUPER_ADMIN > TENANT_ADMIN > KB_ADMIN > CONTRIBUTOR > VIEWER
             Set<Long> roleIds = utrs.stream().map(UserTenantRole::getRoleId).collect(Collectors.toSet());
             List<Role> roles = roleMapper.findAll().stream()
                     .filter(r -> roleIds.contains(r.getRoleId()))
                     .toList();
-            // 按优先级排序取最高
-            List<String> priority = List.of("TENANT_ADMIN", "KB_ADMIN", "CONTRIBUTOR", "VIEWER");
+            // 按优先级排序取最高（indexOf 未命中返回 -1，SUPER_ADMIN 优先级最高在前）
+            List<String> priority = List.of("SUPER_ADMIN", "TENANT_ADMIN", "KB_ADMIN", "CONTRIBUTOR", "VIEWER");
             Role highest = roles.stream()
                     .min(Comparator.comparingInt(r -> priority.indexOf(r.getRoleCode())))
                     .orElse(null);
             if (highest != null) {
                 roleCode = highest.getRoleCode();
                 roleName = highest.getRoleName();
+            }
+            // 取最高角色对应的租户绑定；超级用户（tenant_id=0）表达"全租户"
+            final Map<Long, Role> roleMap = roleMapper.findAll().stream()
+                    .collect(Collectors.toMap(Role::getRoleId, r -> r));
+            UserTenantRole topUtr = utrs.stream()
+                    .min(Comparator.comparingInt(u -> {
+                        Role r = roleMap.get(u.getRoleId());
+                        return priority.indexOf(r != null ? r.getRoleCode() : "");
+                    }))
+                    .orElse(null);
+            if (topUtr != null) {
+                tenantId = topUtr.getTenantId();
             }
         }
         Map<String, Object> result = new LinkedHashMap<>();
@@ -119,6 +132,7 @@ public class AuthController {
         result.put("nickname", user.getNickname());
         result.put("roleCode", roleCode);
         result.put("roleName", roleName);
+        result.put("tenantId", tenantId);
         return ResponseEntity.ok(Map.of("code", 200, "data", result));
     }
 }

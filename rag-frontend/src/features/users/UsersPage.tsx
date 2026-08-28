@@ -9,6 +9,7 @@ import {
   Table,
   Tabs,
   useToast,
+  type BadgeTone,
   type Column,
 } from '@/components/ui';
 import { IconPlus, IconRefresh, IconSearch, IconTrash } from '@/components/icons';
@@ -22,6 +23,7 @@ import type {
   UserStatus,
 } from '@/lib/types';
 import { formatDateTime, formatRelative, initials } from '@/lib/utils/format';
+import { useAuth } from '@/features/auth/AuthContext';
 
 /** 用户状态 -> 标签样式 */
 const STATUS_META: Record<UserStatus, { label: string; tone: 'ok' | 'warn' | 'danger' }> = {
@@ -31,7 +33,8 @@ const STATUS_META: Record<UserStatus, { label: string; tone: 'ok' | 'warn' | 'da
 };
 
 /** 角色 -> 标签配色 */
-const ROLE_TONE: Record<RoleCode, 'accent' | 'accent2' | 'accent3' | 'neutral'> = {
+const ROLE_TONE: Record<RoleCode, BadgeTone> = {
+  SUPER_ADMIN: 'danger',
   TENANT_ADMIN: 'accent2',
   KB_ADMIN: 'accent',
   CONTRIBUTOR: 'accent3',
@@ -50,6 +53,7 @@ const INITIAL_FORM: CreateUserRequest = {
 /** 用户管理页：表格 + 角色标签 + 创建弹窗 */
 export function UsersPage() {
   const toast = useToast();
+  const { user } = useAuth();
 
   const [users, setUsers] = useState<UserItem[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -159,6 +163,14 @@ export function UsersPage() {
   const toggleRole = (role: RoleCode) => {
     setForm((f) => ({ ...f, roles: [role] }));
   };
+
+  /**
+   * 可分配角色列表（交互展示规则）：
+   * 平台超级用户可分配全部角色；租户管理员视图下自动过滤 SUPER_ADMIN 条目（角色层级屏蔽）。
+   */
+  const assignableRoles = user?.roles.includes('SUPER_ADMIN')
+    ? ALL_ROLES
+    : ALL_ROLES.filter((r) => r !== 'SUPER_ADMIN');
 
   const columns: Column<UserItem>[] = [
     {
@@ -346,7 +358,7 @@ export function UsersPage() {
           <div>
             <label className="mb-2 block text-xs font-medium text-muted">分配角色</label>
             <div className="space-y-2">
-              {ALL_ROLES.map((role) => {
+              {assignableRoles.map((role) => {
                 const active = form.roles.includes(role);
                 return (
                   <label

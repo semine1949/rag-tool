@@ -27,11 +27,44 @@ public class KbAccessService {
 
     private static final Logger log = LoggerFactory.getLogger(KbAccessService.class);
 
+    public static final String SUPER_ADMIN = "SUPER_ADMIN";
     public static final String TENANT_ADMIN = "TENANT_ADMIN";
     public static final String KB_ADMIN = "KB_ADMIN";
     public static final String CONTRIBUTOR = "CONTRIBUTOR";
     public static final String VIEWER = "VIEWER";
     public static final String NONE = "NONE";
+
+    /**
+     * 角色层级（数值越小权限越高）：SUPER_ADMIN(0) > TENANT_ADMIN(1) > KB_ADMIN(2) > CONTRIBUTOR(3) > VIEWER(4)
+     * 用于"不可任命/修改高于自身权限的角色"校验。
+     */
+    public static int roleLevel(String roleCode) {
+        if (SUPER_ADMIN.equals(roleCode)) return 0;
+        if (TENANT_ADMIN.equals(roleCode)) return 1;
+        if (KB_ADMIN.equals(roleCode)) return 2;
+        if (CONTRIBUTOR.equals(roleCode)) return 3;
+        if (VIEWER.equals(roleCode)) return 4;
+        return Integer.MAX_VALUE;
+    }
+
+    /**
+     * 判断角色是否为平台超级用户
+     */
+    public static boolean isSuperAdminRole(String roleCode) {
+        return SUPER_ADMIN.equals(roleCode);
+    }
+
+    /**
+     * 判断用户是否为平台超级用户（user_tenant_role 中 tenant_id=0 且 role 为 SUPER_ADMIN）
+     * 超级用户以 tenant_id=0 表示"全租户"权限范围。
+     */
+    public boolean isSuperAdmin(Long userId) {
+        if (userId == null) return false;
+        UserTenantRole utr = userTenantRoleMapper.findByUserAndTenant(userId, 0L);
+        if (utr == null) return false;
+        Role role = roleMapper.findById(utr.getRoleId());
+        return role != null && SUPER_ADMIN.equals(role.getRoleCode());
+    }
 
     private final KnowledgeBaseMapper kbMapper;
     private final UserTenantRoleMapper userTenantRoleMapper;
@@ -53,6 +86,9 @@ public class KbAccessService {
      */
     public String resolveKbRole(Long userId, Long kbId) {
         if (userId == null || kbId == null) return NONE;
+
+        // 超级用户对任意知识库拥有完全控制权限（跨租户短路放行）
+        if (isSuperAdmin(userId)) return SUPER_ADMIN;
 
         KnowledgeBase kb = kbMapper.findById(kbId);
         if (kb == null) return NONE;
@@ -91,6 +127,8 @@ public class KbAccessService {
      */
     public String resolveTenantRole(Long userId, Long tenantId) {
         if (userId == null || tenantId == null) return null;
+        // 超级用户短路：返回平台超级用户角色编码（跨租户）
+        if (isSuperAdmin(userId)) return SUPER_ADMIN;
         UserTenantRole utr = userTenantRoleMapper.findByUserAndTenant(userId, tenantId);
         if (utr == null) return null;
         Role role = roleMapper.findById(utr.getRoleId());
@@ -102,6 +140,8 @@ public class KbAccessService {
      */
     public boolean hasTenantAdminRole(Long userId) {
         if (userId == null) return false;
+        // 超级用户视为任意租户管理员
+        if (isSuperAdmin(userId)) return true;
         List<UserTenantRole> list = userTenantRoleMapper.findByUserId(userId);
         for (UserTenantRole utr : list) {
             Role role = roleMapper.findById(utr.getRoleId());

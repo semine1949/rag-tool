@@ -12,6 +12,9 @@ import java.util.List;
 @Mapper
 public interface KnowledgeBaseMapper {
 
+    /** 全量知识库列表（供超级用户全局视图使用） */
+    List<KnowledgeBase> findAll();
+
     KnowledgeBase findById(@Param("kbId") Long kbId);
 
     List<KnowledgeBase> findByTenantId(@Param("tenantId") Long tenantId);

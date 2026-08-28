@@ -18,6 +18,11 @@
         FROM kb_knowledge_base WHERE kb_id = #{kbId}
     </select>
 
+    <select id="findAll" resultMap="KnowledgeBaseResultMap">
+        SELECT kb_id, tenant_id, kb_name, description, embedding_model, status, create_time
+        FROM kb_knowledge_base ORDER BY create_time DESC
+    </select>
+
     <select id="findByTenantId" resultMap="KnowledgeBaseResultMap">
         SELECT kb_id, tenant_id, kb_name, description, embedding_model, status, create_time
         FROM kb_knowledge_base WHERE tenant_id = #{tenantId}

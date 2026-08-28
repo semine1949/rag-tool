@@ -130,6 +130,14 @@ export const mockTenants: Tenant[] = [
 
 export const mockRoles: Role[] = [
   {
+    id: 0,
+    code: 'SUPER_ADMIN',
+    name: '平台超级用户',
+    description: '全平台最高权限，不属于任何租户，可创建/删除所有租户、管理全平台用户角色',
+    level: 0,
+    userCount: 1,
+  },
+  {
     id: 1,
     code: 'TENANT_ADMIN',
     name: '租户管理员',
@@ -170,9 +178,10 @@ export const mockUsers: UserItem[] = [
     id: 1,
     username: 'admin',
     email: 'admin@acme.com',
-    tenantId: 1,
-    tenantName: 'Acme 智能科技',
-    roles: ['TENANT_ADMIN'],
+    // 平台超级用户：tenantId=0 表示全租户，不属于任何租户实体
+    tenantId: 0,
+    tenantName: '',
+    roles: ['SUPER_ADMIN'],
     status: 'ACTIVE',
     createdAt: daysAgo(180),
     lastLoginAt: minutesAgo(6),

@@ -202,8 +202,11 @@ CREATE TABLE doc_chunk (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文档分片表（v3：分片策略与参数快照下沉至分片维度）';
 
 -- ==================== 角色字典种子数据 ====================
+-- 说明：SUPER_ADMIN（role_id=0）为平台超级用户，不属于任何租户实体，
+--      其在 user_tenant_role 中以 tenant_id=0 表示"全租户"权限范围。
 INSERT INTO sys_role (role_id, role_code, role_name, description, status)
-VALUES (1, 'TENANT_ADMIN', '租户管理员', '管理本租户知识库、任命知识库管理员、查看全部资源', 1),
+VALUES (0, 'SUPER_ADMIN', '平台超级用户', '全平台最高权限角色，不属于任何租户，可创建/删除所有租户、管理全平台用户角色分配、查看所有租户配置与数据', 1),
+       (1, 'TENANT_ADMIN', '租户管理员', '管理本租户知识库、任命知识库管理员、查看全部资源', 1),
        (2, 'KB_ADMIN', '知识库管理员', '管理指定知识库配置与成员', 1),
        (3, 'CONTRIBUTOR', '知识库编辑者', '可上传文档，不可修改配置', 1),
        (4, 'VIEWER', '知识库查看者', '仅查看文档与检索', 1)

@@ -166,7 +166,7 @@ export function mapUser(u: BackendUser): UserItem {
     tenantId: u.tenantId ?? 0,
     tenantName: u.tenantName ?? '',
     roles: (u.roleCodes ?? []).filter((c): c is RoleCode =>
-      ['TENANT_ADMIN', 'KB_ADMIN', 'CONTRIBUTOR', 'VIEWER'].includes(c),
+      ['SUPER_ADMIN', 'TENANT_ADMIN', 'KB_ADMIN', 'CONTRIBUTOR', 'VIEWER'].includes(c),
     ),
     status: toUserStatus(u.status),
     createdAt: u.createTime ?? '',
@@ -187,6 +187,8 @@ export function mapRole(r: BackendRole): Role {
 /** 按角色编码计算层级（越小越高） */
 function roleLevel(code: string): number {
   switch (code) {
+    case 'SUPER_ADMIN':
+      return 0;
     case 'TENANT_ADMIN':
       return 1;
     case 'KB_ADMIN':

@@ -19,10 +19,18 @@ export interface PageResult<T> {
   pageSize: number;
 }
 
-/* ============ RBAC 四级角色 ============ */
+/* ============ RBAC 角色 ============ */
 
-/** 四级角色编码，与后端 RoleEnum 一致 */
-export type RoleCode = 'TENANT_ADMIN' | 'KB_ADMIN' | 'CONTRIBUTOR' | 'VIEWER';
+/**
+ * 角色编码，与后端 sys_role 一致。
+ * 两级权限隔离：
+ *   - SUPER_ADMIN（平台超级用户，不属于任何租户，全租户可见）
+ *   - 租户内角色 TENANT_ADMIN > KB_ADMIN > CONTRIBUTOR > VIEWER
+ */
+export type RoleCode = 'SUPER_ADMIN' | 'TENANT_ADMIN' | 'KB_ADMIN' | 'CONTRIBUTOR' | 'VIEWER';
+
+/** 超级用户的"全租户"占位租户ID（与后端约定一致） */
+export const SUPER_ADMIN_TENANT_ID = 0;
 
 /** 角色元信息 */
 export interface Role {

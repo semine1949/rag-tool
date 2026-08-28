@@ -10,6 +10,7 @@ import type {
   UserItem,
 } from '@/lib/types';
 import { request, USE_MOCK } from './client';
+import { tokenStore } from './tokenStore';
 import {
   mapKb,
   mapRole,
@@ -138,9 +139,14 @@ export const adminApi = {
 
   async createKb(payload: CreateKbRequest): Promise<KnowledgeBase> {
     if (USE_MOCK) return mockServer.createKb(payload);
-    // 后端需要 tenantId；/auth/me 未返回该字段，暂以 1（默认租户）构造
-    // 后续后端在 /auth/me 中补充 tenantId 后可改为从用户信息读取
-    const tenantId = 1;
+    // 后端需要 tenantId：从当前登录用户读取（/auth/me 已返回 tenantId）。
+    // 平台超级用户（tenantId=0，全租户）需显式指定目标租户，这里以首个可用租户兜底。
+    const user = tokenStore.getUser();
+    let tenantId = user?.tenantId;
+    if (!tenantId || tenantId === 0) {
+      const tenants = await this.listTenants();
+      tenantId = tenants[0]?.id ?? 0;
+    }
     const created = await request.post<BackendKb>('/admin/kb', {
       tenantId,
       kbName: payload.name,

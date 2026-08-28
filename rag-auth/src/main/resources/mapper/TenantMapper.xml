@@ -11,6 +11,11 @@
         <result property="createTime" column="create_time"/>
     </resultMap>
 
+    <select id="findAll" resultMap="TenantResultMap">
+        SELECT tenant_id, tenant_name, default_embedding_model, status, create_time
+        FROM sys_tenant ORDER BY tenant_id
+    </select>
+
     <select id="findById" resultMap="TenantResultMap">
         SELECT tenant_id, tenant_name, default_embedding_model, status, create_time
         FROM sys_tenant WHERE tenant_id = #{tenantId}

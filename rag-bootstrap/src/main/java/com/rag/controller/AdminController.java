@@ -61,7 +61,7 @@ public class AdminController {
     @PostMapping("/tenant")
     public ResponseEntity<?> createTenant(@RequestBody Map<String, String> body) {
         Long opUserId = requireAuth();
-        requireTenantAdminAnywhere(opUserId);
+        requireSuperAdmin(opUserId);
         String tenantName = body.get("tenantName");
         if (tenantName == null || tenantName.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "msg", "租户名称不能为空"));
@@ -73,33 +73,30 @@ public class AdminController {
                 .createTime(new Date())
                 .build();
         tenantMapper.insert(tenant);
-        // 内置初始化规则：创建租户后，自动将操作人授予该租户 TENANT_ADMIN，避免权限真空（谁创建、谁负责）
-        Role taRole = roleMapper.findByCode(TENANT_ADMIN);
-        if (taRole != null) {
-            UserTenantRole existing = userTenantRoleMapper.findByUserAndTenant(opUserId, tenant.getTenantId());
-            if (existing == null) {
-                userTenantRoleMapper.insert(UserTenantRole.builder()
-                        .userId(opUserId).tenantId(tenant.getTenantId()).roleId(taRole.getRoleId())
-                        .createTime(new Date()).build());
-            } else {
-                userTenantRoleMapper.updateRole(existing.getId(), taRole.getRoleId());
-            }
-        }
-        log.info("租户创建成功并初始化管理员: tenantId={}, tenantName={}, adminUserId={}",
+        // 注：创建者（超级用户）以 tenant_id=0 表达"全租户"，无需再授予具体租户的 TENANT_ADMIN。
+        // 新租户的 TENANT_ADMIN 由超级用户后续通过成员指派接口指定。
+        log.info("租户创建成功: tenantId={}, tenantName={}, createdBySuperAdmin={}",
                 tenant.getTenantId(), tenantName, opUserId);
         return ResponseEntity.ok(Map.of("code", 200, "data", tenant));
     }
 
     @GetMapping("/tenant/list")
     public ResponseEntity<?> listTenants() {
-        requireAuth();
-        List<Tenant> tenants = new ArrayList<>();
-        Long userId = RequestContext.currentUserId();
-        List<UserTenantRole> utrs = userTenantRoleMapper.findByUserId(userId);
-        Set<Long> tenantIds = utrs.stream().map(UserTenantRole::getTenantId).collect(Collectors.toSet());
-        for (Long tid : tenantIds) {
-            Tenant t = tenantMapper.findById(tid);
-            if (t != null) tenants.add(t);
+        Long userId = requireAuth();
+        List<Tenant> tenants;
+        // 数据范围隔离：超级用户查看全部租户，租户管理员仅本租户
+        if (kbAccessService.isSuperAdmin(userId)) {
+            tenants = tenantMapper.findAll();
+        } else {
+            tenants = new ArrayList<>();
+            List<UserTenantRole> utrs = userTenantRoleMapper.findByUserId(userId);
+            Set<Long> tenantIds = utrs.stream().map(UserTenantRole::getTenantId).collect(Collectors.toSet());
+            for (Long tid : tenantIds) {
+                if (tid != null && tid != 0L) { // 跳过超级用户占位租户0
+                    Tenant t = tenantMapper.findById(tid);
+                    if (t != null) tenants.add(t);
+                }
+            }
         }
         return ResponseEntity.ok(Map.of("code", 200, "data", tenants));
     }
@@ -115,6 +112,7 @@ public class AdminController {
                                               @RequestBody Map<String, Object> body) {
         Long opUserId = requireAuth();
         requireTenantAdminOfTenant(opUserId, tenantId);
+        boolean opIsSuper = kbAccessService.isSuperAdmin(opUserId);
 
         Long userId = objToLong(body.get("userId"));
         if (userId == null) {
@@ -124,8 +122,12 @@ public class AdminController {
 
         // 撤销：删除该用户在此租户的角色绑定
         if ("REVOKE".equals(action)) {
-            if (userId.equals(opUserId)) {
+            if (!opIsSuper && userId.equals(opUserId)) {
                 return ResponseEntity.badRequest().body(Map.of("code", 400, "msg", "不能撤销自己的租户管理员身份"));
+            }
+            // 角色层级屏蔽：租户管理员不得撤销/修改本租户内同级（TENANT_ADMIN）或上级身份
+            if (!opIsSuper && isTenantAdminUser(userId, tenantId)) {
+                return ResponseEntity.badRequest().body(Map.of("code", 403, "msg", "无权撤销同级租户管理员身份"));
             }
             userTenantRoleMapper.deleteByUserAndTenant(userId, tenantId);
             log.info("已撤销用户租户角色: userId={}, tenantId={}", userId, tenantId);
@@ -138,6 +140,10 @@ public class AdminController {
         Role role = roleMapper.findByCode(roleCode);
         if (role == null) {
             return ResponseEntity.badRequest().body(Map.of("code", 400, "msg", "角色不存在: " + roleCode));
+        }
+        // 角色层级校验：操作人不可任命高于自身权限的角色（同级/上级）
+        if (!opIsSuper && KbAccessService.roleLevel(roleCode) < KbAccessService.roleLevel(TENANT_ADMIN)) {
+            return ResponseEntity.badRequest().body(Map.of("code", 403, "msg", "无权授予高于自身权限的角色"));
         }
         UserTenantRole existing = userTenantRoleMapper.findByUserAndTenant(userId, tenantId);
         if (existing != null) {
@@ -157,6 +163,7 @@ public class AdminController {
     public ResponseEntity<?> createUser(@RequestBody Map<String, Object> body) {
         Long opUserId = requireAuth();
         requireTenantAdminAnywhere(opUserId);
+        boolean opIsSuper = kbAccessService.isSuperAdmin(opUserId);
         String username = (String) body.get("username");
         String password = (String) body.getOrDefault("password", "rag123456");
         String nickname = (String) body.get("nickname");
@@ -180,6 +187,10 @@ public class AdminController {
             String roleCode = roleList.get(0) == null ? null : roleList.get(0).toString();
             if (roleCode != null && !roleCode.isBlank()) {
                 validateRoleCode(roleCode);
+                // 角色层级校验：操作人不可任命高于自身权限的角色
+                if (!opIsSuper && KbAccessService.roleLevel(roleCode) < KbAccessService.roleLevel(TENANT_ADMIN)) {
+                    return ResponseEntity.badRequest().body(Map.of("code", 403, "msg", "无权授予高于自身权限的角色"));
+                }
                 Role role = roleMapper.findByCode(roleCode);
                 if (role != null) {
                     UserTenantRole existing = userTenantRoleMapper.findByUserAndTenant(user.getUserId(), tenantId);
@@ -210,12 +221,22 @@ public class AdminController {
     public ResponseEntity<?> listUsers() {
         Long opUserId = requireAuth();
         requireTenantAdminAnywhere(opUserId);
+        boolean opIsSuper = kbAccessService.isSuperAdmin(opUserId);
 
         List<AuthUser> users = userMapper.findAll();
         List<Map<String, Object>> result = new ArrayList<>();
         for (AuthUser u : users) {
             // 该用户的全部租户角色绑定
             List<UserTenantRole> utrs = userTenantRoleMapper.findByUserId(u.getUserId());
+            // 数据范围隔离：租户管理员仅可见本租户用户；超级用户可见全部
+            if (!opIsSuper) {
+                boolean inSameTenant = utrs.stream().anyMatch(utr -> utr.getTenantId() != null && utr.getTenantId() == opTenantId(opUserId));
+                boolean isSuperUserEntry = utrs.stream().anyMatch(utr -> utr.getTenantId() != null && utr.getTenantId() == 0L);
+                // 租户管理员不可见超级用户条目，且仅保留本租户用户
+                if (isSuperUserEntry || !inSameTenant) {
+                    continue;
+                }
+            }
             // 取第一个绑定租户作为默认所属（一个用户通常属于一个主租户）
             Long tenantId = utrs.isEmpty() ? null : utrs.get(0).getTenantId();
             String tenantName = null;
@@ -248,8 +269,15 @@ public class AdminController {
 
     @GetMapping("/role/list")
     public ResponseEntity<?> listRoles() {
-        requireAuth();
-        return ResponseEntity.ok(Map.of("code", 200, "data", roleMapper.findAll()));
+        Long userId = requireAuth();
+        List<Role> roles = roleMapper.findAll();
+        // 角色层级屏蔽：租户管理员不可见平台超级用户角色；超级用户可见全部角色
+        if (!kbAccessService.isSuperAdmin(userId)) {
+            roles = roles.stream()
+                    .filter(r -> !KbAccessService.SUPER_ADMIN.equals(r.getRoleCode()))
+                    .collect(Collectors.toList());
+        }
+        return ResponseEntity.ok(Map.of("code", 200, "data", roles));
     }
 
     // ==================== 知识库管理（v2：chunk 策略已移至文档维度） ====================
@@ -285,12 +313,19 @@ public class AdminController {
     @GetMapping("/kb/list")
     public ResponseEntity<?> listKnowledgeBases() {
         Long userId = requireAuth();
+        // 数据范围隔离：超级用户查看全部租户知识库，租户管理员仅本租户
+        if (kbAccessService.isSuperAdmin(userId)) {
+            return ResponseEntity.ok(Map.of("code", 200, "data", kbMapper.findAll()));
+        }
         // 从当前用户租户归属中推导 tenantId
         List<UserTenantRole> utrs = userTenantRoleMapper.findByUserId(userId);
         if (utrs.isEmpty()) {
             return ResponseEntity.ok(Map.of("code", 200, "data", Collections.emptyList()));
         }
         Long tenantId = utrs.get(0).getTenantId();
+        if (tenantId == null || tenantId == 0L) {
+            return ResponseEntity.ok(Map.of("code", 200, "data", Collections.emptyList()));
+        }
         return ResponseEntity.ok(Map.of("code", 200, "data", kbMapper.findByTenantId(tenantId)));
     }
 
@@ -426,11 +461,35 @@ public class AdminController {
         }
     }
 
+    /** 仅平台超级用户可执行（用于创建/删除租户等平台级操作） */
+    private void requireSuperAdmin(Long userId) {
+        if (!kbAccessService.isSuperAdmin(userId)) {
+            throw new RagException("PERM_DENIED", "仅平台超级用户可执行此操作");
+        }
+    }
+
     private void requireTenantAdminOfTenant(Long userId, Long tenantId) {
         String role = kbAccessService.resolveTenantRole(userId, tenantId);
-        if (!TENANT_ADMIN.equals(role)) {
+        if (!TENANT_ADMIN.equals(role) && !KbAccessService.SUPER_ADMIN.equals(role)) {
             throw new RagException("PERM_DENIED", "仅租户管理员可执行此操作");
         }
+    }
+
+    /** 取当前操作人（租户管理员）所属租户ID；超级用户返回 null（不分租户过滤） */
+    private Long opTenantId(Long userId) {
+        List<UserTenantRole> utrs = userTenantRoleMapper.findByUserId(userId);
+        for (UserTenantRole utr : utrs) {
+            if (utr.getTenantId() != null && utr.getTenantId() != 0L) {
+                return utr.getTenantId();
+            }
+        }
+        return null;
+    }
+
+    /** 判断某用户是否为指定租户的租户管理员 */
+    private boolean isTenantAdminUser(Long userId, Long tenantId) {
+        String role = kbAccessService.resolveTenantRole(userId, tenantId);
+        return TENANT_ADMIN.equals(role);
     }
 
     private void validateRoleCode(String roleCode) {

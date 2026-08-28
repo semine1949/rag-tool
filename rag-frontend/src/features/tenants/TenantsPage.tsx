@@ -15,6 +15,7 @@ import { IconBuilding, IconPlus, IconRefresh, IconTrash } from '@/components/ico
 import { adminApi } from '@/lib/api';
 import type { CreateTenantRequest, Tenant, TenantStatus } from '@/lib/types';
 import { formatDateTime, formatNumber, formatSize } from '@/lib/utils/format';
+import { useAuth } from '@/features/auth/AuthContext';
 import { IsolationDiagram } from './IsolationDiagram';
 
 /** 租户状态 -> 标签样式 */
@@ -35,6 +36,10 @@ const INITIAL_FORM: CreateTenantRequest = {
 /** 租户管理页：表格 + 创建弹窗 + 三级隔离架构图 */
 export function TenantsPage() {
   const toast = useToast();
+  const { user } = useAuth();
+
+  // 创建/删除租户仅平台超级用户可执行（两级权限隔离规则）
+  const isSuper = user?.roles.includes('SUPER_ADMIN') ?? false;
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -228,15 +233,17 @@ export function TenantsPage() {
           >
             指派管理员
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void handleDelete(t)}
-            className="text-danger hover:bg-danger/10"
-            aria-label="删除"
-          >
-            <IconTrash className="h-3.5 w-3.5" />
-          </Button>
+          {isSuper && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleDelete(t)}
+              className="text-danger hover:bg-danger/10"
+              aria-label="删除"
+            >
+              <IconTrash className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       ),
     },
@@ -256,9 +263,11 @@ export function TenantsPage() {
               <Button variant="secondary" onClick={load} icon={<IconRefresh className="h-4 w-4" />}>
                 刷新
               </Button>
-              <Button onClick={() => setCreateOpen(true)} icon={<IconPlus className="h-4 w-4" />}>
-                创建租户
-              </Button>
+              {isSuper && (
+                <Button onClick={() => setCreateOpen(true)} icon={<IconPlus className="h-4 w-4" />}>
+                  创建租户
+                </Button>
+              )}
             </div>
           </div>
 

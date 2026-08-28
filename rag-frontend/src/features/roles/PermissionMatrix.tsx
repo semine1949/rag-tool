@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils/cn';
 
 /** 角色列的高亮配色 */
 const ROLE_COLOR: Record<RoleCode, string> = {
+  SUPER_ADMIN: '#ef4444',
   TENANT_ADMIN: '#a855f7',
   KB_ADMIN: '#22d3ee',
   CONTRIBUTOR: '#3b82f6',

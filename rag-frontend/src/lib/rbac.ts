@@ -1,12 +1,13 @@
 import type { PermissionKey, RetrievalMode, RoleCode } from '@/lib/types';
 
 /**
- * 四级 RBAC 权限矩阵（前端判定，最终以后端校验为准）
- * 层级：TENANT_ADMIN > KB_ADMIN > CONTRIBUTOR > VIEWER
+ * RBAC 权限矩阵（前端判定，最终以后端校验为准）
+ * 两级权限隔离：SUPER_ADMIN(平台超级用户) > 租户内 TENANT_ADMIN > KB_ADMIN > CONTRIBUTOR > VIEWER
  */
 
 /** 角色层级，数字越小权限越高 */
 export const ROLE_LEVEL: Record<RoleCode, number> = {
+  SUPER_ADMIN: 0,
   TENANT_ADMIN: 1,
   KB_ADMIN: 2,
   CONTRIBUTOR: 3,
@@ -15,6 +16,7 @@ export const ROLE_LEVEL: Record<RoleCode, number> = {
 
 /** 角色中文名 */
 export const ROLE_LABEL: Record<RoleCode, string> = {
+  SUPER_ADMIN: '平台超级用户',
   TENANT_ADMIN: '租户管理员',
   KB_ADMIN: '知识库管理员',
   CONTRIBUTOR: '内容贡献者',
@@ -39,6 +41,21 @@ export const PERMISSION_META: Record<PermissionKey, { label: string; desc: strin
 
 /** 权限矩阵：角色 -> 拥有的权限点 */
 export const ROLE_PERMISSIONS: Record<RoleCode, PermissionKey[]> = {
+  /** 平台超级用户拥有全部权限点 */
+  SUPER_ADMIN: [
+    'tenant:manage',
+    'user:manage',
+    'role:assign',
+    'kb:create',
+    'kb:config',
+    'kb:delete',
+    'kb:permission',
+    'doc:upload',
+    'doc:delete',
+    'doc:reprocess',
+    'doc:view',
+    'chat:query',
+  ],
   TENANT_ADMIN: [
     'tenant:manage',
     'user:manage',
@@ -83,7 +100,16 @@ export const PERMISSION_ORDER: PermissionKey[] = [
   'chat:query',
 ];
 
-export const ALL_ROLES: RoleCode[] = ['TENANT_ADMIN', 'KB_ADMIN', 'CONTRIBUTOR', 'VIEWER'];
+export const ALL_ROLES: RoleCode[] = ['SUPER_ADMIN', 'TENANT_ADMIN', 'KB_ADMIN', 'CONTRIBUTOR', 'VIEWER'];
+
+/**
+ * 判断角色集合是否包含平台超级用户
+ * 超级用户由后端 /auth/me 的 tenantId=0 表达"全租户"，前端据此渲染全局视图。
+ */
+export function isSuperAdmin(roles: RoleCode[] | undefined): boolean {
+  if (!roles || roles.length === 0) return false;
+  return roles.includes('SUPER_ADMIN');
+}
 
 /** 判断角色集合是否拥有指定权限 */
 export function hasPermission(roles: RoleCode[] | undefined, key: PermissionKey): boolean {

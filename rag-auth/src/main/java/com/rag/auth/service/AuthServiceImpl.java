@@ -28,6 +28,9 @@ public class AuthServiceImpl implements AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);
 
     public static final String TENANT_ROLE_ADMIN = "TENANT_ADMIN";
+    public static final String SUPER_ROLE = "SUPER_ADMIN";
+    /** 超级用户的"全租户"占位租户ID */
+    public static final long SUPER_TENANT_ID = 0L;
 
     private final JwtTokenProvider jwtTokenProvider;
     private final PasswordEncoder passwordEncoder;
@@ -86,23 +89,24 @@ public class AuthServiceImpl implements AuthService {
             log.info("默认管理员已创建: admin / admin123, userId={}", admin.getUserId());
         }
 
-        // 3. 确保 TENANT_ADMIN 角色存在并赋予管理员
-        Role tenantAdminRole = roleMapper.findByCode(TENANT_ROLE_ADMIN);
-        if (tenantAdminRole == null) {
-            log.warn("角色字典缺少 TENANT_ADMIN，请检查 schema-v2.sql 种子数据");
+        // 3. 确保 SUPER_ADMIN 角色存在并赋予管理员（admin 为平台超级用户，不属于任何租户）
+        Role superRole = roleMapper.findByCode(SUPER_ROLE);
+        if (superRole == null) {
+            log.warn("角色字典缺少 SUPER_ADMIN，请检查 schema-v2.sql 种子数据");
             return;
         }
-        UserTenantRole existing = userTenantRoleMapper.findByUserAndTenant(admin.getUserId(), tenant.getTenantId());
+        // admin 以 tenant_id=0 表示"全租户"，不绑定任何具体租户
+        UserTenantRole existing = userTenantRoleMapper.findByUserAndTenant(admin.getUserId(), SUPER_TENANT_ID);
         if (existing == null) {
             UserTenantRole utr = UserTenantRole.builder()
                     .userId(admin.getUserId())
-                    .tenantId(tenant.getTenantId())
-                    .roleId(tenantAdminRole.getRoleId())
+                    .tenantId(SUPER_TENANT_ID)
+                    .roleId(superRole.getRoleId())
                     .createTime(new Date())
                     .build();
             userTenantRoleMapper.insert(utr);
-            log.info("已为管理员赋予 TENANT_ADMIN: userId={}, tenantId={}",
-                    admin.getUserId(), tenant.getTenantId());
+            log.info("已为管理员赋予 SUPER_ADMIN（全租户）: userId={}, tenantId={}",
+                    admin.getUserId(), SUPER_TENANT_ID);
         }
     }
 

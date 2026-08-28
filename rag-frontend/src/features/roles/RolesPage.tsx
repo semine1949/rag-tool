@@ -5,6 +5,7 @@ import {
   CardHeader,
   SkeletonCard,
   useToast,
+  type BadgeTone,
 } from '@/components/ui';
 import { IconLock, IconShield, IconUsers } from '@/components/icons';
 import { adminApi } from '@/lib/api';
@@ -13,7 +14,8 @@ import type { Role, RoleCode } from '@/lib/types';
 import { PermissionMatrix } from './PermissionMatrix';
 
 /** 角色卡片配色 */
-const ROLE_TONE: Record<RoleCode, { tone: 'accent' | 'accent2' | 'accent3' | 'neutral'; color: string }> = {
+const ROLE_TONE: Record<RoleCode, { tone: BadgeTone; color: string }> = {
+  SUPER_ADMIN: { tone: 'danger', color: '#ef4444' },
   TENANT_ADMIN: { tone: 'accent2', color: '#a855f7' },
   KB_ADMIN: { tone: 'accent', color: '#22d3ee' },
   CONTRIBUTOR: { tone: 'accent3', color: '#3b82f6' },
