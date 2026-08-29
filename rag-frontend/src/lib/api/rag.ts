@@ -13,7 +13,6 @@ import {
   authHeaders,
   http,
   request,
-  USE_MOCK,
 } from './client';
 import {
   mapCitation,
@@ -23,7 +22,6 @@ import {
   type BackendFileResult,
   type BackendStreamEvent,
 } from './adapter';
-import { mockServer } from './mock/server';
 
 /**
  * RAG 问答与检索接口
@@ -41,7 +39,6 @@ export const ragApi = {
    * 后端为 multipart 接口，需以 form 提交，request 为 JSON 字符串
    */
   async chat(payload: ChatRequest): Promise<ChatResponse> {
-    if (USE_MOCK) return mockServer.chat(payload);
     const form = new FormData();
     form.append(
       'request',
@@ -71,8 +68,6 @@ export const ragApi = {
    * @returns 取消函数
    */
   chatStream(payload: ChatRequest, onEvent: (e: StreamEvent) => void): () => void {
-    if (USE_MOCK) return mockServer.chatStream(payload, onEvent);
-
     const controller = new AbortController();
     const form = new FormData();
     form.append(
@@ -140,18 +135,6 @@ export const ragApi = {
     options: UploadOptions,
     onProgress?: (percent: number) => void,
   ): Promise<DocumentItem> {
-    if (USE_MOCK) {
-      if (onProgress) {
-        let p = 0;
-        const timer = window.setInterval(() => {
-          p = Math.min(96, p + 12);
-          onProgress(p);
-          if (p >= 96) window.clearInterval(timer);
-        }, 120);
-      }
-      return mockServer.upload(file, options);
-    }
-
     const form = new FormData();
     form.append('file', file);
     form.append('kbId', String(options.kbId));
@@ -171,7 +154,6 @@ export const ragApi = {
    * 后端为 query params 接口
    */
   async search(payload: SearchRequest): Promise<SearchHit[]> {
-    if (USE_MOCK) return mockServer.search(payload);
     const params = new URLSearchParams();
     params.set('kbId', String(payload.kbId));
     params.set('query', payload.query);
@@ -192,7 +174,6 @@ export const ragApi = {
 
   /** 多知识库联合检索 */
   async multiSearch(payload: MultiSearchRequest): Promise<SearchHit[]> {
-    if (USE_MOCK) return mockServer.multiSearch(payload);
     const list = await request.post<BackendFileResult[]>('/rag/multi-search', {
       kbIds: payload.kbIds,
       query: payload.query,
@@ -212,7 +193,6 @@ export const ragApi = {
 
   /** 文档列表：后端要求必须传 kbId */
   documents(kbId: number): Promise<DocumentItem[]> {
-    if (USE_MOCK) return mockServer.listDocs(kbId);
     return request.get<BackendFileResult[]>(`/rag/documents?kbId=${kbId}`).then((list) =>
       list.map((r, i) => ({
         id: Number(r.fileId ?? i),

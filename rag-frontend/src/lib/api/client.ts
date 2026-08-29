@@ -10,9 +10,6 @@ import { tokenStore } from './tokenStore';
 /** API 基础路径，默认走 Vite 代理 */
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-/** 是否使用 mock 数据层（默认开启，便于无后端联调） */
-export const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false';
-
 /** 统一业务异常 */
 export class ApiError extends Error {
   code: number;

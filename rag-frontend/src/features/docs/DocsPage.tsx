@@ -12,7 +12,7 @@ import {
   type Column,
 } from '@/components/ui';
 import { IconDoc, IconRefresh, IconSearch, IconTrash } from '@/components/icons';
-import { adminApi, ragApi, USE_MOCK } from '@/lib/api';
+import { adminApi, ragApi } from '@/lib/api';
 import type {
   ChunkStrategy,
   DocStatus,
@@ -58,8 +58,7 @@ export function DocsPage() {
 
   /**
    * 加载知识库与文档。
-   * mock 模式：一次返回全部文档；真实后端：/rag/documents 必须传 kbId，
-   * 因此对每个知识库分别拉取后合并。
+   * 真实后端：/rag/documents 必须传 kbId，因此对每个知识库分别拉取后合并。
    */
   const load = async () => {
     setLoading(true);
@@ -67,22 +66,17 @@ export function DocsPage() {
       const kbList = await adminApi.listKbs();
       setKbs(kbList);
 
-      if (USE_MOCK) {
-        const docList = await ragApi.documents(kbList[0]?.id ?? 1);
-        setDocs(docList);
-      } else {
-        // 真实后端：逐知识库拉取文档并合并，忽略单个库的异常
-        const grouped = await Promise.all(
-          kbList.map(async (kb) => {
-            try {
-              return await ragApi.documents(kb.id);
-            } catch {
-              return [];
-            }
-          }),
-        );
-        setDocs(grouped.flat());
-      }
+      // 真实后端：逐知识库拉取文档并合并，忽略单个库的异常
+      const grouped = await Promise.all(
+        kbList.map(async (kb) => {
+          try {
+            return await ragApi.documents(kb.id);
+          } catch {
+            return [];
+          }
+        }),
+      );
+      setDocs(grouped.flat());
     } catch (e) {
       toast.error((e as Error).message || '加载文档失败');
     } finally {

@@ -138,7 +138,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* 底部版本信息 */}
         <div className="shrink-0 border-t border-line px-5 py-3.5">
-          <p className="text-[10px] text-muted-2">版本 v1.0.0 · Mock 模式</p>
+          <p className="text-[10px] text-muted-2">版本 v1.0.0</p>
         </div>
       </aside>
     </>

@@ -45,7 +45,7 @@ export function ChatPage() {
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedKbs, setSelectedKbs] = useState<number[]>([]);
-  const [model, setModel] = useState('qwen-max');
+  const [model, setModel] = useState('qwen-turbo');
   const [retrievalMode, setRetrievalMode] = useState<RetrievalMode>('HYBRID');
   const [topK, setTopK] = useState(5);
   const [temperature, setTemperature] = useState(0.3);

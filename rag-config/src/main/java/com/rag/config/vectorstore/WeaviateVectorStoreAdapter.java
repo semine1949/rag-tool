@@ -505,18 +505,27 @@ public class WeaviateVectorStoreAdapter implements VectorStore {
                 }
             }
             Map<String, Object> metadata = new HashMap<>();
+            // 注意：Spring AI 的 Document 构造器强制校验 metadata 值不能为 null。
+            // Weaviate 查询返回的 schema 属性若入库时未写入，值为 null，需跳过，否则抛
+            // IllegalArgumentException: metadata cannot have null values。
             for (Map.Entry<String, Object> e : item.entrySet()) {
                 if ("_additional".equals(e.getKey()) || "text".equals(e.getKey())) {
                     continue;
                 }
-                metadata.put(e.getKey(), e.getValue());
+                if (e.getValue() != null) {
+                    metadata.put(e.getKey(), e.getValue());
+                }
             }
             String metaJson = getStr(item, "metadata");
             if (!metaJson.isBlank()) {
                 try {
                     Map<String, Object> extra = objectMapper.readValue(metaJson,
                             new TypeReference<Map<String, Object>>() {});
-                    metadata.putAll(extra);
+                    for (Map.Entry<String, Object> e : extra.entrySet()) {
+                        if (e.getValue() != null) {
+                            metadata.put(e.getKey(), e.getValue());
+                        }
+                    }
                 } catch (Exception ignored) {
                     // 忽略无法解析的元数据
                 }

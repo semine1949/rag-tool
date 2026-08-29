@@ -5,8 +5,7 @@ import type {
   LoginResponse,
   RegisterRequest,
 } from '@/lib/types';
-import { request, USE_MOCK } from './client';
-import { mockServer } from './mock/server';
+import { request } from './client';
 
 /**
  * 认证相关接口
@@ -24,7 +23,6 @@ export const authApi = {
    * 前端在 AuthContext 中组装完整 LoginResponse（accessToken + 占位 refreshToken + user）。
    */
   async login(payload: LoginRequest): Promise<LoginResponse> {
-    if (USE_MOCK) return mockServer.login(payload);
     const body = await request.post<{ accessToken: string }>('/auth/login', payload, {
       // @ts-expect-error 自定义扩展字段，供请求拦截器识别
       skipAuth: true,
@@ -52,7 +50,6 @@ export const authApi = {
 
   /** 注册：后端返回 userId，成功后仍需单独登录 */
   async register(payload: RegisterRequest): Promise<LoginResponse> {
-    if (USE_MOCK) return mockServer.register(payload);
     await request.post<{ userId: number }>('/auth/register', payload, {
       // @ts-expect-error 自定义扩展字段
       skipAuth: true,
@@ -63,7 +60,6 @@ export const authApi = {
 
   /** 使用 refreshToken 换取新令牌 */
   async refresh(refreshToken: string): Promise<LoginResponse> {
-    if (USE_MOCK) return mockServer.refresh();
     const body = await request.post<{ accessToken: string }>(
       '/auth/refresh',
       { refreshToken },
@@ -87,9 +83,6 @@ export const authApi = {
    * 映射为前端 CurrentUser（id / username / roles 等）
    */
   async me(): Promise<CurrentUser> {
-    if (USE_MOCK) {
-      return mockServer.getUser(1);
-    }
     const raw = await request.get<BackendMe>('/auth/me');
     return {
       id: raw.userId,
@@ -108,7 +101,6 @@ export const authApi = {
 
   /** 按 id 查询用户详情 */
   getUser(id: number): Promise<CurrentUser> {
-    if (USE_MOCK) return mockServer.getUser(id);
     return request.get<CurrentUser>(`/auth/user/${id}`);
   },
 };

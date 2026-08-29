@@ -15,21 +15,21 @@ spring:
         bge-m3:
           category: EMBEDDING
           protocol: OPENAI
-          base-url: https://api.siliconflow.cn/v1
+          base-url: https://api.siliconflow.cn
           api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
           model-name: BAAI/bge-m3
         # Qwen/Qwen3-Embedding-0.6B — 硅基流动
         tongyi:
           category: EMBEDDING
           protocol: OPENAI
-          base-url: https://api.siliconflow.cn/v1
+          base-url: https://api.siliconflow.cn
           api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
           model-name: Qwen/Qwen3-Embedding-0.6B
         # text-embedding-3-small — OpenAI 官方
         openai:
           category: EMBEDDING
           protocol: OPENAI
-          base-url: https://api.openai.com/v1
+          base-url: https://api.openai.com
           api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
           model-name: text-embedding-3-small
 
@@ -38,7 +38,7 @@ spring:
         qwen3-rerank:
           category: RERANK
           protocol: OPENAI
-          base-url: https://api.siliconflow.cn/v1
+          base-url: https://api.siliconflow.cn
           api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
           model-name: Qwen/Qwen3-Reranker
           extensions:
@@ -51,7 +51,7 @@ spring:
         qwen-turbo:
           category: CHAT
           protocol: OPENAI
-          base-url: https://api.siliconflow.cn/v1
+          base-url: https://api.siliconflow.cn
           api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
           model-name: Qwen/Qwen2.5-7B-Instruct
           temperature: 0.7
@@ -63,7 +63,7 @@ spring:
         deepseek-ocr:
           category: OCR
           protocol: OPENAI
-          base-url: https://api.siliconflow.cn/v1
+          base-url: https://api.siliconflow.cn
           api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
           model-name: deepseek-ai/DeepSeek-OCR
           extensions:
