@@ -82,4 +82,9 @@
           )
     </delete>
 
+    <delete id="deleteByDocId">
+        DELETE FROM doc_version
+        WHERE doc_id = #{docId}
+    </delete>
+
 </mapper>

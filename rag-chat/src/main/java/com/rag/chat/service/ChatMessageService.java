@@ -13,6 +13,7 @@ import com.rag.common.chat.ChatStreamEvent;
 import com.rag.common.chat.Citation;
 import com.rag.common.chat.SessionStore;
 import com.rag.common.entity.KbChatConfig;
+import com.rag.common.entity.config.SearchConfig;
 import com.rag.common.exception.RagException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -76,15 +77,18 @@ public class ChatMessageService {
      * 任一节点异常均降级不中断整体请求。
      * </p>
      *
-     * @param query      用户提问
-     * @param kbId       知识库 ID（可选，null 时仅从临时文档召回）
-     * @param sessionId  会话 ID（可选，null 时新建会话）
-     * @param files      临时上传文件（可选）
-     * @param modelName  对话模型名（可选，null 时回退全局默认）
+     * @param query        用户提问
+     * @param kbId         知识库 ID（可选，null 时仅从临时文档召回）
+     * @param sessionId    会话 ID（可选，null 时新建会话）
+     * @param files        临时上传文件（可选）
+     * @param modelName    对话模型名（可选，null 时回退全局默认）
+     * @param searchConfig 检索配置（可选，null 时知识库召回回退纯向量）
+     * @param topK         知识库召回条数（可选，null 时默认 10）
      * @return 问答结果
      */
     public ChatAnswer chat(String query, Long kbId, String sessionId,
-                           List<MultipartFile> files, String modelName) {
+                           List<MultipartFile> files, String modelName,
+                           SearchConfig searchConfig, Integer topK) {
         long startTime = System.currentTimeMillis();
         Long userId = RequestContext.currentUserId();
         Long tenantId = sessionService.resolveTenantId(kbId, userId);
@@ -98,7 +102,7 @@ public class ChatMessageService {
         ChatSession session = sessionService.getOrCreateSession(sessionId, tenantId, userId, kbId);
 
         // ③ 上下文准备（安全校验 + 改写 + 召回 + 组装）
-        PreparedContext prepared = contextService.prepareContext(query, kbId, session, files);
+        PreparedContext prepared = contextService.prepareContext(query, kbId, session, files, searchConfig, topK);
         String contextText = prepared.assembledContext().getContextText();
         List<Citation> citations = prepared.assembledContext().getCitations();
 
@@ -143,15 +147,18 @@ public class ChatMessageService {
      * 事件顺序：citations → content（多次）→ done / error。
      * </p>
      *
-     * @param query      用户提问
-     * @param kbId       知识库 ID（可选）
-     * @param sessionId  会话 ID（可选）
-     * @param files      临时上传文件（可选）
-     * @param modelName  对话模型名（可选）
+     * @param query        用户提问
+     * @param kbId         知识库 ID（可选）
+     * @param sessionId    会话 ID（可选）
+     * @param files        临时上传文件（可选）
+     * @param modelName    对话模型名（可选）
+     * @param searchConfig 检索配置（可选，null 时知识库召回回退纯向量）
+     * @param topK         知识库召回条数（可选，null 时默认 10）
      * @return SSE 事件流
      */
     public Flux<ChatStreamEvent> chatStream(String query, Long kbId, String sessionId,
-                                            List<MultipartFile> files, String modelName) {
+                                            List<MultipartFile> files, String modelName,
+                                            SearchConfig searchConfig, Integer topK) {
         Long userId = RequestContext.currentUserId();
         Long tenantId = sessionService.resolveTenantId(kbId, userId);
 
@@ -166,7 +173,7 @@ public class ChatMessageService {
         // ③ 上下文准备
         PreparedContext prepared;
         try {
-            prepared = contextService.prepareContext(query, kbId, session, files);
+            prepared = contextService.prepareContext(query, kbId, session, files, searchConfig, topK);
         } catch (RagException e) {
             return Flux.just(ChatStreamEvent.error(e.getMessage()));
         }

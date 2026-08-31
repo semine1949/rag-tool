@@ -1,5 +1,6 @@
 import type {
   Citation,
+  DocStatus,
   KnowledgeBase,
   Role,
   RoleCode,
@@ -110,6 +111,34 @@ export function toUserStatus(n: number): UserItem['status'] {
 
 export function toDocStatus(success?: boolean): 'INDEXED' | 'FAILED' {
   return success === false ? 'FAILED' : 'INDEXED';
+}
+
+/** 后端文档登记实体（KbDocument）字段，对应 GET /rag/documents 返回的 List<KbDocument> */
+export interface BackendKbDocument {
+  docId?: number;
+  kbId?: number;
+  tenantId?: number;
+  fileName?: string;
+  fileType?: string;
+  fileSize?: number;
+  /** 处理状态：PENDING/PARSING/PARSED/CHUNKING/CHUNKED/VECTORIZING/COMPLETED/FAILED */
+  processStatus?: string;
+  chunkCount?: number;
+  version?: string;
+  ownerId?: number;
+  collectionName?: string;
+  uploadTime?: string;
+  createTime?: string;
+}
+
+/** 后端处理状态 → 前端文档状态 */
+export function toDocStatusFromProcess(processStatus?: string): DocStatus {
+  if (!processStatus) return 'INDEXED';
+  const p = processStatus.toUpperCase();
+  if (p === 'FAILED') return 'FAILED';
+  if (p === 'COMPLETED') return 'INDEXED';
+  // 其余（PENDING/PARSING/PARSED/CHUNKING/CHUNKED/VECTORIZING）视为处理中
+  return 'PROCESSING';
 }
 
 /* ============ 实体映射 ============ */

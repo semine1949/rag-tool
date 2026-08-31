@@ -3,6 +3,7 @@ package com.rag.service;
 import com.rag.auth.context.RequestContext;
 import com.rag.auth.mapper.DocChunkMapper;
 import com.rag.auth.mapper.KbDocumentMapper;
+import com.rag.auth.service.KbAccessService;
 import com.rag.auth.service.KbConfigService;
 import com.rag.common.chunker.ChunkStrategyFactory;
 import com.rag.common.chunker.ParentChildTextSplitter;
@@ -66,6 +67,7 @@ public class RagStorageService {
     private final KbConfigService kbConfigService;
     private final KbDocumentMapper kbDocumentMapper;
     private final DocChunkMapper docChunkMapper;
+    private final KbAccessService kbAccessService;
     private final Executor ragTaskExecutor;
     /** JSON 序列化器（生成 params_snapshot 参数快照） */
     private final ObjectMapper objectMapper;
@@ -78,6 +80,7 @@ public class RagStorageService {
                              KbConfigService kbConfigService,
                              KbDocumentMapper kbDocumentMapper,
                              DocChunkMapper docChunkMapper,
+                             KbAccessService kbAccessService,
                              Executor ragTaskExecutor,
                              ObjectMapper objectMapper) {
         this.parseFactory = parseFactory;
@@ -88,6 +91,7 @@ public class RagStorageService {
         this.kbConfigService = kbConfigService;
         this.kbDocumentMapper = kbDocumentMapper;
         this.docChunkMapper = docChunkMapper;
+        this.kbAccessService = kbAccessService;
         this.ragTaskExecutor = ragTaskExecutor;
         this.objectMapper = objectMapper;
     }
@@ -307,6 +311,73 @@ public class RagStorageService {
                 }
             }
         }
+    }
+
+    // ==================== 文档删除 ====================
+
+    /**
+     * 删除单个文档：物理删除业务数据（kb_document / doc_chunk / doc_version 三表）
+     * 并物理删除对应向量。
+     * <p>权限：上传者本人 或 拥有 KB_ADMIN / TENANT_ADMIN 权限的用户可删。</p>
+     *
+     * @param docId  文档 ID
+     * @param userId 当前操作用户 ID
+     */
+    public void deleteDocument(Long docId, Long userId) {
+        // ===== 1. 校验文档存在并执行权限校验 =====
+        KbDocument doc = kbDocumentMapper.findById(docId);
+        if (doc == null) {
+            throw new RagException("RAG_DOC_NOT_FOUND", "文档不存在: " + docId);
+        }
+        Long kbId = doc.getKbId();
+        checkDeletePermission(userId, doc);
+
+        // ===== 2. 按 doc_chunk.vector_id 精确删除向量 =====
+        // 说明：docId 未声明为 Weaviate schema 属性，无法用其做 where 过滤；
+        // 故复用 doc_chunk.vector_id（Weaviate object ID）做精确删除，最可靠。
+        try {
+            List<DocChunk> chunks = docChunkMapper.findByDocId(docId);
+            List<String> vectorIds = chunks.stream()
+                    .map(DocChunk::getVectorId)
+                    .filter(v -> v != null && !v.isBlank())
+                    .toList();
+            if (!vectorIds.isEmpty()) {
+                EmbeddingConfig embConfig = kbConfigService.loadEmbeddingConfig(kbId);
+                WeaviateCollectionConfig colConfig = kbConfigService.loadCollectionConfig(kbId);
+                VectorStore store = vectorStoreRegistry.getWeaviateStore(
+                        colConfig.getClassName(), resolveEmbeddingModel(embConfig), colConfig.getVectorDim());
+                store.delete(vectorIds);
+                log.info("文档向量已物理删除, docId={}, vectorIds={}", docId, vectorIds.size());
+            }
+        } catch (Exception e) {
+            log.warn("删除文档向量失败（可忽略）: {}", e.getMessage());
+        }
+
+        // ===== 3. 物理删除三表业务记录 =====
+        docChunkMapper.deleteByDocId(docId);          // doc_chunk 分片
+        versionService.deleteByDocId(docId);          // doc_version 版本
+        kbDocumentMapper.deleteByDocId(docId);        // kb_document 文档
+        log.info("文档已物理删除, docId={}, kbId={}, operator={}", docId, kbId, userId);
+    }
+
+    /**
+     * 删除权限校验：上传者本人 或 拥有 KB_ADMIN / TENANT_ADMIN 权限的用户。
+     *
+     * @param userId 当前操作用户 ID
+     * @param doc    目标文档
+     */
+    private void checkDeletePermission(Long userId, KbDocument doc) {
+        // 上传者本人可删
+        if (doc.getOwnerId() != null && doc.getOwnerId().equals(userId)) {
+            return;
+        }
+        // 或拥有知识库管理权限（KB_ADMIN / TENANT_ADMIN）
+        String role = kbAccessService.resolveKbRole(userId, doc.getKbId());
+        if (KbAccessService.KB_ADMIN.equals(role) || KbAccessService.TENANT_ADMIN.equals(role)) {
+            return;
+        }
+        throw new RagException("PERM_DENIED",
+                String.format("仅上传者本人或知识库管理员可删除该文档, docId=%d, user=%d", doc.getDocId(), userId));
     }
 
     // ==================== 批量处理 ====================

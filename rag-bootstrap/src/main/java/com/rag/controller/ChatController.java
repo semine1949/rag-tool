@@ -55,10 +55,13 @@ public class ChatController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ChatAnswer chat(@RequestPart("request") ChatRequest request,
                            @RequestPart(value = "files", required = false) List<MultipartFile> files) {
-        log.info("同步问答请求 kbId={} sessionId={} stream={}", request.getKbId(), request.getSessionId(), request.getStream());
+        log.info("同步问答请求 kbId={} sessionId={} stream={} searchMode={} topK={}",
+                request.getKbId(), request.getSessionId(), request.getStream(),
+                request.getSearchMode(), request.getTopK());
         return chatMessageService.chat(
                 request.getQuery(), request.getKbId(), request.getSessionId(),
-                files, request.getModel());
+                files, request.getModel(),
+                request.toSearchConfig(), request.getTopK());
     }
 
     /**
@@ -73,9 +76,12 @@ public class ChatController {
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Flux<ChatStreamEvent> chatStream(@RequestPart("request") ChatRequest request,
                                             @RequestPart(value = "files", required = false) List<MultipartFile> files) {
-        log.info("流式问答请求 kbId={} sessionId={}", request.getKbId(), request.getSessionId());
+        log.info("流式问答请求 kbId={} sessionId={} searchMode={} topK={}",
+                request.getKbId(), request.getSessionId(),
+                request.getSearchMode(), request.getTopK());
         return chatMessageService.chatStream(
                 request.getQuery(), request.getKbId(), request.getSessionId(),
-                files, request.getModel());
+                files, request.getModel(),
+                request.toSearchConfig(), request.getTopK());
     }
 }

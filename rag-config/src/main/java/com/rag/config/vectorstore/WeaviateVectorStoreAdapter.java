@@ -437,7 +437,14 @@ public class WeaviateVectorStoreAdapter implements VectorStore {
         WhereArgument whereArg = WhereArgument.builder().filter(where).build();
         Result<GraphQLResponse> result = client.graphQL().get()
                 .withClassName(className)
-                .withFields(Field.builder().name("textHash").build())
+                // 必须同时返回 recordId 与 _additional.id，否则 parseSearchResult 构造 Document 时
+                // id 为空会抛 IllegalArgumentException: id cannot be null or empty
+                .withFields(
+                        Field.builder().name("textHash").build(),
+                        Field.builder().name("recordId").build(),
+                        Field.builder().name("_additional")
+                                .fields(Field.builder().name("id").build())
+                                .build())
                 .withWhere(whereArg)
                 .withLimit(1)
                 .run();

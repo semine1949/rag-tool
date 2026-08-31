@@ -30,4 +30,9 @@ public interface DocumentVersionMapper {
 
     int deleteOlderThan(@Param("docId") Long docId,
                         @Param("keepCount") int keepCount);
+
+    /**
+     * 按文档ID物理删除全部版本记录（用于文档删除）
+     */
+    int deleteByDocId(@Param("docId") Long docId);
 }

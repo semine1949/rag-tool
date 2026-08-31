@@ -18,8 +18,10 @@ import {
   mapCitation,
   parseCitationsData,
   toDocStatus,
+  toDocStatusFromProcess,
   type BackendChatAnswer,
   type BackendFileResult,
+  type BackendKbDocument,
   type BackendStreamEvent,
 } from './adapter';
 
@@ -191,29 +193,45 @@ export const ragApi = {
     }));
   },
 
-  /** 文档列表：后端要求必须传 kbId */
+  /**
+   * 文档列表：后端要求必须传 kbId。
+   * 注意：后端 GET /rag/documents 返回的是 List<KbDocument>（字段为 docId/processStatus/...），
+   * 而非 BackendFileResult（fileId）。此处用 docId 作为前端 DocumentItem.id，
+   * 删除接口 DELETE /rag/documents/{docId} 才能命中真实主键。
+   */
   documents(kbId: number): Promise<DocumentItem[]> {
-    return request.get<BackendFileResult[]>(`/rag/documents?kbId=${kbId}`).then((list) =>
-      list.map((r, i) => ({
-        id: Number(r.fileId ?? i),
-        fileName: r.fileName ?? '',
-        fileType: '',
-        fileSizeKb: 0,
-        kbId,
-        kbName: '',
-        chunkCount: r.chunkCount ?? 0,
-        version: Number(r.documentVersion ?? 1),
-        status: toDocStatus(r.success),
-        chunkStrategy: 'text-model',
-        uploadedBy: '',
-        uploadedAt: '',
-        errorMsg: r.message,
-      })),
-    );
+    return request
+      .get<BackendKbDocument[]>(`/rag/documents?kbId=${kbId}`)
+      .then((list) =>
+        list.map((r) => ({
+          id: Number(r.docId ?? 0),
+          fileName: r.fileName ?? '',
+          fileType: r.fileType ?? '',
+          fileSizeKb: r.fileSize ? Math.round(r.fileSize / 1024) : 0,
+          kbId,
+          kbName: '',
+          chunkCount: r.chunkCount ?? 0,
+          version: Number(r.version ? r.version.replace(/[^0-9.]/g, '') || 1 : 1),
+          status: toDocStatusFromProcess(r.processStatus),
+          chunkStrategy: 'text-model',
+          uploadedBy: '',
+          uploadedAt: r.uploadTime ?? r.createTime ?? '',
+          errorMsg: '',
+        })),
+      );
+  },
+
+  /**
+   * 删除单个文档：物理删除业务数据（kb_document / doc_chunk / doc_version 三表）+ 向量。
+   * 对应后端 DELETE /api/rag/documents/{docId}，docId 即文档列表返回的 id。
+   * 权限：上传者本人 或 知识库管理员（KB_ADMIN / TENANT_ADMIN）。
+   */
+  deleteDocument(docId: number): Promise<void> {
+    return request.del<void>(`/rag/documents/${docId}`).then(() => undefined);
   },
 };
 
-/** 将前端 ChatRequest 转为后端 ChatRequest JSON（单 kbId + sessionId） */
+/** 将前端 ChatRequest 转为后端 ChatRequest JSON（单 kbId + sessionId + 检索参数） */
 function buildChatRequest(p: ChatRequest): Record<string, unknown> {
   return {
     kbId: p.kbIds[0] ?? null,
@@ -221,6 +239,9 @@ function buildChatRequest(p: ChatRequest): Record<string, unknown> {
     sessionId: p.sessionId ?? null,
     model: p.model,
     stream: false,
+    // 透传检索模式与召回条数：后端据此控制 Chat 知识库召回（VECTOR_ONLY/BM25_ONLY/HYBRID）
+    searchMode: p.retrievalMode,
+    topK: p.topK,
   };
 }
 

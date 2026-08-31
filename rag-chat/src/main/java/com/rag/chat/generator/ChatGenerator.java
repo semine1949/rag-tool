@@ -13,6 +13,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -102,16 +103,18 @@ public class ChatGenerator {
                     ChatStreamEvent.citations(citationsJson));
 
             // 流式推送内容片段
+            // 注意：不能用 map + 返回 null，Reactor 的 map 禁止 mapper 返回 null，
+            // 一旦返回 null 会抛出 "The mapper returned a null value" NPE，且无法被 filter 拦截。
+            // 因此改为 flatMap + Mono.empty()：null/空 chunk 直接静默跳过，不触发 NPE。
             Flux<ChatStreamEvent> contentEvents = chatModel.stream(prompt)
-                    .map(response -> {
+                    .flatMap(response -> {
                         String chunk = response.getResult().getOutput().getText();
                         if (chunk != null && !chunk.isEmpty()) {
                             fullAnswer.append(chunk);
-                            return ChatStreamEvent.content(chunk);
+                            return Mono.just(ChatStreamEvent.content(chunk));
                         }
-                        return null;
-                    })
-                    .filter(event -> event != null);
+                        return Mono.empty();
+                    });
 
             // 推送结束事件
             Flux<ChatStreamEvent> doneEvent = Flux.defer(() ->

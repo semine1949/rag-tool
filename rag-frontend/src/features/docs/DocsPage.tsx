@@ -152,9 +152,9 @@ export function DocsPage() {
   };
 
   const handleDelete = async (doc: DocumentItem) => {
-    if (!window.confirm(`确认删除文档「${doc.fileName}」及其全部向量分块？`)) return;
+    if (!window.confirm(`确认删除文档「${doc.fileName}」及其全部向量分块？删除后不可恢复。`)) return;
     try {
-      await adminApi.deleteDoc(doc.id);
+      await ragApi.deleteDocument(doc.id);
       setDocs((prev) => prev.filter((d) => d.id !== doc.id));
       toast.success('文档已删除');
     } catch (e) {

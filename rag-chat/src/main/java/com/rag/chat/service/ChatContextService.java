@@ -78,14 +78,17 @@ public class ChatContextService {
     /**
      * 准备上下文：查询改写 → 检索召回（知识库+临时文档）→ 上下文组装。
      *
-     * @param query   用户提问
-     * @param kbId    知识库 ID（可选）
-     * @param session 当前会话
-     * @param files   临时上传文件（可选）
+     * @param query       用户提问
+     * @param kbId        知识库 ID（可选）
+     * @param session     当前会话
+     * @param files       临时上传文件（可选）
+     * @param searchConfig 检索配置（模式与参数；null 时回退纯向量 VECTOR_ONLY）
+     * @param topK        知识库召回条数（null 时默认 10）
      * @return 准备好的上下文（含改写查询、全部文档、组装结果）
      */
     public PreparedContext prepareContext(String query, Long kbId,
-                                          ChatSession session, List<MultipartFile> files) {
+                                          ChatSession session, List<MultipartFile> files,
+                                          SearchConfig searchConfig, Integer topK) {
         List<ChatMessage> history = session.getMessages();
 
         // ① 输入安全校验
@@ -106,7 +109,7 @@ public class ChatContextService {
 
         // 3a. 知识库召回
         if (kbId != null) {
-            List<Document> kbDocs = searchDocuments(rewrittenQuery, kbId);
+            List<Document> kbDocs = searchDocuments(rewrittenQuery, kbId, searchConfig, topK);
             if (kbDocs != null) {
                 allDocs.addAll(kbDocs);
             }
@@ -168,8 +171,14 @@ public class ChatContextService {
 
     /**
      * 从知识库检索并返回原始 {@link Document} 列表。
+     *
+     * @param query        检索内容
+     * @param kbId         知识库 ID
+     * @param searchConfig 检索配置（模式与参数；null 时回退纯向量 VECTOR_ONLY）
+     * @param topK         召回条数（null 时默认 10）
      */
-    private List<Document> searchDocuments(String query, Long kbId) {
+    private List<Document> searchDocuments(String query, Long kbId,
+                                           SearchConfig searchConfig, Integer topK) {
         KbConfigService.KbLoadedConfig loaded = kbConfigService.loadConfigs(kbId);
         EmbeddingConfig embeddingConfig = loaded.embeddingConfig();
         WeaviateCollectionConfig collectionConfig = loaded.collectionConfig();
@@ -178,12 +187,12 @@ public class ChatContextService {
         WeaviateVectorStoreAdapter store = (WeaviateVectorStoreAdapter) vectorStoreRegistry.getWeaviateStore(
                 collectionConfig.getClassName(), model, collectionConfig.getVectorDim());
 
-        SearchConfig searchConfig = SearchConfig.builder()
-                .searchMode(SearchMode.VECTOR_ONLY)
-                .build();
-        int topK = 10; // Chat 场景召回 10 条候选，由 ContextAssembler 按 Token 预算截断
+        // 检索配置：未传时回退纯向量；召回条数未传时默认 10（由 ContextAssembler 按 Token 预算截断）
+        SearchConfig config = searchConfig != null ? searchConfig
+                : SearchConfig.builder().searchMode(SearchMode.VECTOR_ONLY).build();
+        int k = (topK != null && topK > 0) ? topK : 10;
 
-        return store.searchByMode(query, topK, null, searchConfig);
+        return store.searchByMode(query, k, null, config);
     }
 
     /**

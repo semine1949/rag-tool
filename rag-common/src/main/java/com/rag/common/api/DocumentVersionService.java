@@ -47,4 +47,9 @@ public interface DocumentVersionService {
      * 清理过期版本（保留最近N个）
      */
     int cleanExpiredVersions(Long docId, int keepCount);
+
+    /**
+     * 按文档ID物理删除全部版本记录（用于文档删除）
+     */
+    int deleteByDocId(Long docId);
 }

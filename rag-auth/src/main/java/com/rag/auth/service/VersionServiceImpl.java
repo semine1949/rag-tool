@@ -85,6 +85,13 @@ public class VersionServiceImpl implements DocumentVersionService {
         return versionMapper.deleteOlderThan(docId, keepCount);
     }
 
+    @Override
+    public int deleteByDocId(Long docId) {
+        int deleted = versionMapper.deleteByDocId(docId);
+        log.info("版本记录已物理删除, docId={}, count={}", docId, deleted);
+        return deleted;
+    }
+
     private int[] parseVersion(String version) {
         try {
             String v = version.startsWith("v") ? version.substring(1) : version;

@@ -306,6 +306,22 @@ public class RagController {
         }
     }
 
+    /**
+     * 删除单个文档：物理删除业务数据（三表）+ 向量。
+     * <p>权限：上传者本人 或 拥有 KB_ADMIN / TENANT_ADMIN 权限的用户可删。</p>
+     */
+    @DeleteMapping("/documents/{docId}")
+    public ResponseEntity<?> deleteDocument(@PathVariable Long docId) {
+        try {
+            Long userId = requireAuth();
+            ragStorageService.deleteDocument(docId, userId);
+            return ResponseEntity.ok(Map.of("code", 200, "msg", "文档已删除"));
+        } catch (Exception e) {
+            log.error("删除文档失败, docId={}", docId, e);
+            return ResponseEntity.badRequest().body(Map.of("code", 500, "msg", e.getMessage()));
+        }
+    }
+
     // ==================== 辅助方法 ====================
 
     private Long requireAuth() {
