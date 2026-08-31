@@ -238,6 +238,7 @@ export function mapCitation(c: BackendCitation): Citation {
     docName: c.fileName ?? '',
     kbName: '',
     chunkIndex: 0,
+    chunkId: c.chunkId ?? '',
     score: c.score ?? 0,
     snippet: c.snippet ?? '',
   };

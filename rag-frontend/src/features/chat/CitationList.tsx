@@ -41,7 +41,12 @@ export function CitationList({ citations }: { citations: Citation[] }) {
             <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-grad text-[9px] font-bold text-[#04121a]">
               {c.index}
             </span>
-            <span className="max-w-[180px] truncate">{c.docName}</span>
+            <span className="max-w-[160px] truncate">{c.docName}</span>
+            {c.chunkId && (
+              <span className="max-w-[80px] truncate text-muted-2" title={c.chunkId}>
+                #{c.chunkId.slice(-8)}
+              </span>
+            )}
             <Badge tone={scoreTone(c.score)} className="ml-0.5 !px-1.5 !py-0 !text-[10px]">
               {c.score.toFixed(2)}
             </Badge>
@@ -58,9 +63,12 @@ export function CitationList({ citations }: { citations: Citation[] }) {
             return (
               <>
                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <Badge tone="accent">{c.kbName}</Badge>
+                  <Badge tone="accent">{c.kbName || c.docName}</Badge>
                   <span className="text-[11px] text-muted">
-                    分块 #{c.chunkIndex} · 相似度 {(c.score * 100).toFixed(1)}%
+                    文档 {c.docName}
+                    {c.chunkId ? ` · 分块 #${c.chunkId}` : ''}
+                    {' · 相似度 '}
+                    {(c.score * 100).toFixed(1)}%
                   </span>
                 </div>
                 <p className="text-[11px] leading-relaxed text-muted">{c.snippet}</p>

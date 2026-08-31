@@ -540,6 +540,9 @@ public class WeaviateVectorStoreAdapter implements VectorStore {
             Document.Builder builder = Document.builder().id(id).text(text).metadata(metadata);
             if (score != null) {
                 builder.score(score);
+                // 同时将 score 写入 metadata，供上层（如 ContextAssembler）通过
+                // getDoubleMeta(doc, "score") 读取，避免引用溯源相关度恒为 0
+                metadata.put("score", score);
             }
             documents.add(builder.build());
         }

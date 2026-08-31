@@ -272,6 +272,8 @@ export interface Citation {
   docName: string;
   kbName: string;
   chunkIndex: number;
+  /** 分块 ID（父子分块场景为父/子块标识；无则空） */
+  chunkId?: string;
   /** 相似度得分 0~1 */
   score: number;
   snippet: string;
