@@ -50,15 +50,29 @@ public class WeaviateVectorStoreAdapter implements VectorStore {
     private final int vectorDim;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /**
+     * 单次 embedding 请求之间的最小间隔（毫秒）。
+     * <p>用于降低对 embedding API（如硅基流动 /v1/embeddings）的请求频率，
+     * 避免短时间内密集请求触发服务端限流而 Connection reset。</p>
+     */
+    private static final long DEFAULT_EMBEDDING_THROTTLE_MS = 150L;
+    private final long embeddingThrottleMs;
+
     private final Set<String> existingClasses = ConcurrentHashMap.newKeySet();
     private final Set<String> initializedClasses = ConcurrentHashMap.newKeySet();
 
     public WeaviateVectorStoreAdapter(WeaviateClient client, EmbeddingModel embeddingModel,
                                       String className, int vectorDim) {
+        this(client, embeddingModel, className, vectorDim, DEFAULT_EMBEDDING_THROTTLE_MS);
+    }
+
+    public WeaviateVectorStoreAdapter(WeaviateClient client, EmbeddingModel embeddingModel,
+                                      String className, int vectorDim, long embeddingThrottleMs) {
         this.client = client;
         this.embeddingModel = embeddingModel;
         this.className = className;
         this.vectorDim = vectorDim;
+        this.embeddingThrottleMs = Math.max(embeddingThrottleMs, 0L);
     }
 
     // ==================== 集合初始化 ====================
@@ -138,6 +152,8 @@ public class WeaviateVectorStoreAdapter implements VectorStore {
             if (textHash != null && existsByTextHash(String.valueOf(textHash))) {
                 continue;
             }
+            // 节流：降低 embedding 请求频率，缓解外部 API 限流导致的 Connection reset
+            throttleEmbeddingRequest();
             float[] vector = embeddingModel.embed(text);
             Float[] vectorArray = new Float[vector.length];
             for (int i = 0; i < vector.length; i++) {
@@ -154,6 +170,25 @@ public class WeaviateVectorStoreAdapter implements VectorStore {
             if (result.hasErrors()) {
                 log.error("插入向量记录失败: {}", result.getError());
             }
+        }
+    }
+
+    /**
+     * 在每次 embedding 请求前做节流 sleep，降低对 embedding API 的请求频率。
+     * <p>在 {@link #add(List)} 中被逐分片调用；每个分片一次 embedding 请求，
+     * 密集请求易触发外部服务限流（Connection reset），故在请求之间加入固定间隔。</p>
+     * <p>间隔时长由构造器 {@code embeddingThrottleMs} 控制（默认 150ms，0 表示不节流）。
+     * 当并发上传多个文档时，多线程各自 sleep，整体请求频率天然受控。</p>
+     */
+    private void throttleEmbeddingRequest() {
+        if (embeddingThrottleMs <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(embeddingThrottleMs);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("embedding 节流 sleep 被中断", e);
         }
     }
 
