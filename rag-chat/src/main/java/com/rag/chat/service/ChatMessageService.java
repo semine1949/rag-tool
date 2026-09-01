@@ -105,6 +105,8 @@ public class ChatMessageService {
         PreparedContext prepared = contextService.prepareContext(query, kbId, session, files, searchConfig, topK);
         String contextText = prepared.assembledContext().getContextText();
         List<Citation> citations = prepared.assembledContext().getCitations();
+        // 打印输入给大模型的资料库上下文（RAG 溯源用）
+        logContext("chat", query, contextText, prepared.rewrittenQuery());
 
         // ③.5 解析系统提示词（RAG 场景加载约束模板，普通对话加载通用模板）
         boolean isRag = kbId != null || (files != null && !files.isEmpty());
@@ -180,6 +182,8 @@ public class ChatMessageService {
 
         String contextText = prepared.assembledContext().getContextText();
         List<Citation> citations = prepared.assembledContext().getCitations();
+        // 打印输入给大模型的资料库上下文（RAG 溯源用）
+        logContext("chatStream", query, contextText, prepared.rewrittenQuery());
 
         // ③.5 解析系统提示词（RAG 场景加载约束模板，普通对话加载通用模板）
         boolean isRag = kbId != null || (files != null && !files.isEmpty());
@@ -239,5 +243,31 @@ public class ChatMessageService {
             log.warn("引用序列化失败", e);
             return "[]";
         }
+    }
+
+    /**
+     * 打印输入给大语言模型的资料库上下文（RAG 溯源排查用）。
+     * <p>
+     * 以多行日志输出：调用链路标识、改写后查询、召回片段数、完整 contextText。
+     * 使用 info 级别，便于在生产环境直接检索定位。
+     * </p>
+     *
+     * @param channel      调用链路标识（chat / chatStream）
+     * @param query        用户原始提问
+     * @param contextText  组装后输入给大模型的资料库内容（可能为空）
+     * @param rewritten    改写后的查询（可能为空）
+     */
+    private void logContext(String channel, String query, String contextText, String rewritten) {
+        if (contextText == null || contextText.isBlank()) {
+            log.info("[RAG-CONTEXT][{}] 无可用的资料库上下文，query={}, rewritten={}", channel, query, rewritten);
+            return;
+        }
+        log.info("[RAG-CONTEXT][{}] 输入给大模型的资料库内容开始 <<< query={}, rewritten={}, chars={}",
+                channel, query, rewritten, contextText.length());
+        // 逐行打印，避免单条日志过长被截断
+        for (String line : contextText.split("\\R")) {
+            log.info("[RAG-CONTEXT]    {}", line);
+        }
+        log.info("[RAG-CONTEXT][{}] 输入给大模型的资料库内容结束 >>>", channel);
     }
 }
