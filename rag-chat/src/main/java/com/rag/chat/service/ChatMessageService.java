@@ -2,6 +2,7 @@ package com.rag.chat.service;
 
 import com.rag.auth.context.RequestContext;
 import com.rag.chat.assembler.PromptTemplateResolver;
+import com.rag.chat.classifier.GenericQueryClassifier;
 import com.rag.chat.config.ChatProperties;
 import com.rag.chat.generator.ChatGenerator;
 import com.rag.chat.safety.SafetyChecker;
@@ -24,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -50,6 +52,7 @@ public class ChatMessageService {
     private final SessionStore sessionStore;
     private final ChatProperties chatProperties;
     private final PromptTemplateResolver promptResolver;
+    private final GenericQueryClassifier queryClassifier;
     private final ObjectMapper objectMapper;
 
     public ChatMessageService(ChatSessionService sessionService,
@@ -59,6 +62,7 @@ public class ChatMessageService {
                               SessionStore sessionStore,
                               ChatProperties chatProperties,
                               PromptTemplateResolver promptResolver,
+                              GenericQueryClassifier queryClassifier,
                               ObjectMapper objectMapper) {
         this.sessionService = sessionService;
         this.contextService = contextService;
@@ -67,6 +71,7 @@ public class ChatMessageService {
         this.sessionStore = sessionStore;
         this.chatProperties = chatProperties;
         this.promptResolver = promptResolver;
+        this.queryClassifier = queryClassifier;
         this.objectMapper = objectMapper;
     }
 
@@ -101,6 +106,13 @@ public class ChatMessageService {
         // ② 会话管理
         ChatSession session = sessionService.getOrCreateSession(sessionId, tenantId, userId, kbId);
 
+        // ②.5 检索前置分类拦截（仅知识库问答/混合问答场景生效：preQueryFilterEnabled && kbId != null）
+        // 判定为通用常识、闲聊、实时信息类问题时，跳过检索直接走纯对话模式回答。
+        boolean isRag = kbId != null || (files != null && !files.isEmpty());
+        if (shouldInterceptGenericQuery(kbId, query)) {
+            return handleGenericQuerySync(query, session, modelName, startTime);
+        }
+
         // ③ 上下文准备（安全校验 + 改写 + 召回 + 组装）
         PreparedContext prepared = contextService.prepareContext(query, kbId, session, files, searchConfig, topK);
         String contextText = prepared.assembledContext().getContextText();
@@ -109,7 +121,6 @@ public class ChatMessageService {
         logContext("chat", query, contextText, prepared.rewrittenQuery());
 
         // ③.5 解析系统提示词（RAG 场景加载约束模板，普通对话加载通用模板）
-        boolean isRag = kbId != null || (files != null && !files.isEmpty());
         String systemPrompt = promptResolver.resolve(isRag, null);
 
         // ④ 回答生成
@@ -143,6 +154,158 @@ public class ChatMessageService {
     }
 
     /**
+     * 判断当前请求是否需要触发"检索前置分类拦截"。
+     * <p>
+     * 触发条件：全局开关 {@code preQueryFilterEnabled} 开启，且为知识库问答/混合问答场景（{@code kbId != null}）。
+     * 普通对话（{@code kbId==null} 且无文件）与纯文档问答（{@code kbId==null} 有文件）不触发。
+     * 触发前先执行一次输入安全校验（checkInput），满足"输入安全校验完成后"的时序要求。
+     * </p>
+     *
+     * @param kbId  知识库 ID
+     * @param query 用户提问
+     * @return {@code true} 表示命中通用问题、需拦截走纯对话；{@code false} 表示放行原 RAG 链路
+     */
+    private boolean shouldInterceptGenericQuery(Long kbId, String query) {
+        // 全局开关关闭或非知识库场景，不触发拦截
+        if (!chatProperties.isPreQueryFilterEnabled() || kbId == null) {
+            return false;
+        }
+        // 先验输入安全校验（prepareContext 内幂等二次校验无害）
+        if (!safetyChecker.checkInput(query)) {
+            log.warn("[PRE-QUERY-FILTER] 输入未通过安全校验，放行 RAG 链路 query={}", query);
+            return false;
+        }
+        // 执行通用二分类：true 拦截走纯对话，false 放行进 RAG
+        return queryClassifier.classify(query);
+    }
+
+    /**
+     * 处理被拦截的通用问题（同步模式）。
+     * <p>
+     * 跳过知识库检索，复用通用对话提示词（方案B：优先 {@code preQueryFilterAnswerPrompt}，
+     * 回退普通对话提示词）生成纯对话回答，并在回答开头强制前置统一标注。
+     * 同样经过输出安全校验与会话持久化，引用列表为空。
+     * </p>
+     *
+     * @param query     用户提问
+     * @param kbId      知识库 ID（用于会话上下文）
+     * @param session   当前会话
+     * @param modelName 对话模型名
+     * @param startTime 链路起始时间
+     * @param isRag     是否 RAG 场景（用于提示词解析，拦截分支固定走普通对话分支）
+     * @return 问答结果（含前置标注、空引用）
+     */
+    private ChatAnswer handleGenericQuerySync(String query, ChatSession session,
+                                              String modelName, long startTime) {
+        log.info("[PRE-QUERY-FILTER] 拦截通用问题，跳过知识库检索 query={}", query);
+        // 空引用：未检索知识库，无引用来源
+        List<Citation> citations = List.of();
+        // 解析拦截回答专属提示词（方案B）：优先 preQueryFilterAnswerPrompt，回退普通对话提示词
+        String systemPrompt = resolveInterceptPrompt();
+        String rawAnswer = chatGenerator.generate(query, null, citations, systemPrompt, modelName);
+
+        // 回答开头强制前置统一标注
+        String tag = chatProperties.getPreQueryFilterTag();
+        String answer = (tag != null && !tag.isBlank()) ? tag + "\n" + rawAnswer : rawAnswer;
+
+        // 输出安全校验
+        if (!safetyChecker.checkOutput(answer)) {
+            answer = "回答内容包含不安全信息，已被拦截。";
+        }
+
+        // 会话持久化
+        session.appendMessage(ChatMessage.user(query));
+        session.appendMessage(ChatMessage.assistant(answer));
+        sessionStore.save(session, chatProperties.getSessionTtlSeconds());
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        return ChatAnswer.builder()
+                .answer(answer)
+                .citations(citations)
+                .sessionId(session.getSessionId())
+                .model(modelName != null ? modelName : chatProperties.getChatModel())
+                .elapsedMs(elapsed)
+                .build();
+    }
+
+    /**
+     * 解析拦截回答专属提示词。
+     * <p>方案B：优先使用 {@code preQueryFilterAnswerPrompt}（强调实时性准确性、控制 Token 成本），
+     * 未配置时回退普通对话提示词 {@code promptResolver.resolve(false, null)}。</p>
+     *
+     * @return 拦截回答系统提示词（可能为 null，回退模型默认行为）
+     */
+    private String resolveInterceptPrompt() {
+        String answerPrompt = chatProperties.getPreQueryFilterAnswerPrompt();
+        if (answerPrompt != null && !answerPrompt.isBlank()) {
+            return answerPrompt;
+        }
+        return promptResolver.resolve(false, null);
+    }
+
+    /**
+     * 处理被拦截的通用问题（流式模式）。
+     * <p>
+     * 跳过知识库检索，复用通用对话提示词（方案B）生成纯对话回答。
+     * 事件顺序：citations(空) → content(前置标注) → content(流式回答) → done。
+     * 通过 {@code Flux.concatMap} 在首个内容片段前插入统一前置标注，保证"开头即标注"，
+     * 与同步模式格式统一；done 事件携带含前置标注的完整回答，用于流式完成后会话持久化。
+     * </p>
+     *
+     * @param query     用户提问
+     * @param session   当前会话
+     * @param modelName 对话模型名
+     * @return SSE 事件流
+     */
+    private Flux<ChatStreamEvent> handleGenericQueryStream(String query, ChatSession session,
+                                                           String modelName) {
+        log.info("[PRE-QUERY-FILTER] 拦截通用问题，跳过知识库检索 query={}", query);
+        String systemPrompt = resolveInterceptPrompt();
+        String tag = chatProperties.getPreQueryFilterTag();
+        String tagPrefix = (tag != null && !tag.isBlank()) ? tag + "\n" : "";
+        // 标记前置标注是否已插入（仅首个 content 片段前插入一次）
+        AtomicBoolean tagEmitted = new AtomicBoolean(false);
+        final String finalQuery = query;
+        final ChatSession finalSession = session;
+        // 捕获 done 事件中的完整回答（含前置标注），用于流式完成后持久化助手消息
+        AtomicReference<String> fullAnswer = new AtomicReference<>();
+
+        return chatGenerator.generateStream(query, null, "[]", systemPrompt, modelName)
+                .concatMap(event -> {
+                    // 在首个内容片段前插入前置标注
+                    if (ChatStreamEvent.TYPE_CONTENT.equals(event.getType())
+                            && tagEmitted.compareAndSet(false, true)) {
+                        return Flux.just(ChatStreamEvent.content(tagPrefix), event);
+                    }
+                    // done 事件携带含前置标注的完整回答，供持久化与前端收尾
+                    if (ChatStreamEvent.TYPE_DONE.equals(event.getType())) {
+                        return Flux.just(ChatStreamEvent.done(tagPrefix + event.getData()));
+                    }
+                    return Flux.just(event);
+                })
+                .doOnNext(event -> {
+                    // 捕获 done 事件中的完整回答（已含前置标注）
+                    if (ChatStreamEvent.TYPE_DONE.equals(event.getType())) {
+                        fullAnswer.set(event.getData());
+                    }
+                })
+                .doOnComplete(() -> {
+                    // 持久化用户消息
+                    finalSession.appendMessage(ChatMessage.user(finalQuery));
+                    // 持久化助手消息（仅当流式完整结束时，异常中断不写入不完整消息）
+                    String answer = fullAnswer.get();
+                    if (answer != null && !answer.isBlank()) {
+                        finalSession.appendMessage(ChatMessage.assistant(answer));
+                    }
+                    sessionStore.save(finalSession, chatProperties.getSessionTtlSeconds());
+                })
+                .doOnError(e -> {
+                    // 流式异常时不写入不完整消息，保留上一轮完整会话状态
+                    log.error("流式通用回答异常，会话状态未变更 sessionId={}", session.getSessionId(), e);
+                });
+    }
+
+    /**
      * 流式问答编排。
      * <p>
      * 前 3 步与同步问答相同，第 4 步调用 {@link ChatGenerator#generateStream} 返回 SSE 事件流。
@@ -172,6 +335,12 @@ public class ChatMessageService {
         // ② 会话管理
         ChatSession session = sessionService.getOrCreateSession(sessionId, tenantId, userId, kbId);
 
+        // ②.5 检索前置分类拦截（仅知识库问答/混合问答场景生效：preQueryFilterEnabled && kbId != null）
+        boolean isRag = kbId != null || (files != null && !files.isEmpty());
+        if (shouldInterceptGenericQuery(kbId, query)) {
+            return handleGenericQueryStream(query, session, modelName);
+        }
+
         // ③ 上下文准备
         PreparedContext prepared;
         try {
@@ -186,7 +355,6 @@ public class ChatMessageService {
         logContext("chatStream", query, contextText, prepared.rewrittenQuery());
 
         // ③.5 解析系统提示词（RAG 场景加载约束模板，普通对话加载通用模板）
-        boolean isRag = kbId != null || (files != null && !files.isEmpty());
         String systemPrompt = promptResolver.resolve(isRag, null);
 
         // ④ 流式生成（RAG 场景无可用上下文时，直接返回无答案，不调用 LLM）

@@ -74,4 +74,27 @@ public class ChatProperties {
 
     /** 默认系统提示词（知识库级自定义提示词可覆盖） */
     private String defaultSystemPrompt;
+
+    /**
+     * 检索前置分类拦截全局开关。
+     * <p>仅当 {@code kbId != null} 的知识库问答/混合问答场景生效：
+     * 开启后在检索执行前对用户问题进行通用二分类，判定为通用常识、闲聊、实时信息类问题时
+     * 跳过检索、直接走纯对话模式回答；关闭时完全回退原检索流程，零副作用。</p>
+     */
+    private boolean preQueryFilterEnabled;
+
+    /** 分类用模型名（为空时回退 {@link #chatModel}，全程复用现有对话模型） */
+    private String preQueryFilterModel;
+
+    /** 分类指令模板（含 {@code {query}} 占位符，替换为用户问题；未配置时使用内置极简二分类指令） */
+    private String preQueryFilterPrompt;
+
+    /** 被拦截的通用回答专属提示词（方案B：未配置时回退普通对话提示词 resolve(false,null)）。强调实时性准确性、控制 Token 成本 */
+    private String preQueryFilterAnswerPrompt;
+
+    /** 被拦截的通用回答前置标注（回答开头强制追加，标识未参考知识库内容） */
+    private String preQueryFilterTag = "该回答为通用知识，未参考本知识库内容";
+
+    /** 分类调用超时兜底（毫秒），超过视为分类失败并放行 RAG 链路 */
+    private long preQueryFilterTimeoutMs = 5000;
 }
