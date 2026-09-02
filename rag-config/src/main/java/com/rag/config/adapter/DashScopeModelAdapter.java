@@ -8,6 +8,7 @@ import com.rag.common.adapter.ModelAdapter;
 import com.rag.common.enums.ModelCategory;
 import com.rag.common.enums.ProtocolType;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.stereotype.Component;
 
@@ -35,7 +36,8 @@ public class DashScopeModelAdapter implements ModelAdapter {
     }
 
     @Override
-    public ChatModel createChatModel(String modelName, String baseUrl, String apiKey, String completionsPath) {
+    public ChatModel createChatModel(String modelName, String baseUrl, String apiKey,
+                                     String completionsPath, Double temperature) {
         // 构建 DashScopeApi
         DashScopeApi dashScopeApi = DashScopeApi.builder()
                 .baseUrl(baseUrl)
@@ -43,15 +45,29 @@ public class DashScopeModelAdapter implements ModelAdapter {
                 .build();
 
         // 构建对话选项（DashScopeChatOptions 无链式 model 方法，使用 setter）
+        // 温度读取 YAML 配置（temperature 为 null 时使用 0.7 兜底），而非此前硬编码 0.7
         DashScopeChatOptions chatOptions = new DashScopeChatOptions();
         chatOptions.setModel(modelName);
-        chatOptions.setTemperature(0.7);
+        chatOptions.setTemperature(temperature != null ? temperature : 0.7);
 
         // 构建对话模型
         return DashScopeChatModel.builder()
                 .dashScopeApi(dashScopeApi)
                 .defaultOptions(chatOptions)
                 .build();
+    }
+
+    /**
+     * 构造仅含温度的请求级 DashScope Options。
+     *
+     * @param temperature 场景解析后的采样温度
+     * @return DashScopeChatOptions（仅 temperature，请求级覆盖 defaultOptions）
+     */
+    @Override
+    public ChatOptions createSceneChatOptions(Double temperature) {
+        DashScopeChatOptions options = new DashScopeChatOptions();
+        options.setTemperature(temperature);
+        return options;
     }
 
     @Override

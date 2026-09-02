@@ -3,6 +3,7 @@ package com.rag.common.adapter;
 import com.rag.common.enums.ModelCategory;
 import com.rag.common.enums.ProtocolType;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.embedding.EmbeddingModel;
 
 /**
@@ -48,9 +49,25 @@ public interface ModelAdapter {
      * @param baseUrl         API 基础 URL
      * @param apiKey          API 密钥
      * @param completionsPath 自定义 Completions PATH（可为空）
+     * @param temperature     采样温度（模型级默认温度，来自 YAML 配置；为 null 时适配器使用自身默认）
      * @return 创建好的对话模型实例
      */
-    ChatModel createChatModel(String modelName, String baseUrl, String apiKey, String completionsPath);
+    ChatModel createChatModel(String modelName, String baseUrl, String apiKey,
+                              String completionsPath, Double temperature);
+
+    /**
+     * 构造"仅覆盖温度"的请求级场景 Options。
+     * <p>
+     * 场景化温度通过请求级 {@link ChatOptions} 随 {@code Prompt} 携带，
+     * 与模型 {@code defaultOptions} 合并时请求级优先，从而在不污染模型单例缓存的前提下
+     * 让同一模型在不同场景使用不同温度。各协议适配器返回对应协议的 Options 实现。
+     * 请求级 Options 仅携带温度，不含模型名，避免与已解析的模型名冲突。
+     * </p>
+     *
+     * @param temperature 场景解析后的采样温度（非空）
+     * @return 对应协议的、仅含 temperature 的 ChatOptions
+     */
+    ChatOptions createSceneChatOptions(Double temperature);
 
     /**
      * 创建嵌入模型（EmbeddingModel）。

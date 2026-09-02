@@ -1,11 +1,13 @@
 package com.rag.chat.classifier;
 
 import com.rag.chat.config.ChatProperties;
+import com.rag.common.enums.ChatScene;
 import com.rag.config.factory.AiModelFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Component;
 
@@ -77,9 +79,16 @@ public class GenericQueryClassifier {
         long start = System.currentTimeMillis();
         long timeoutMs = chatProperties.getPreQueryFilterTimeoutMs();
         try {
-            ChatModel chatModel = aiModelFactory.getChatModel(resolveModelName());
+            // 解析分类模型名（为空回退全局 chatModel）
+            String modelName = resolveModelName();
+            ChatModel chatModel = aiModelFactory.getChatModel(modelName);
             String prompt = buildPrompt(query);
-            String response = chatModel.call(new Prompt(new UserMessage(prompt)))
+            // 分类属确定性任务：使用场景化温度（CLASSIFY 默认 0），请求级覆盖模型默认温度，保证判定稳定可复现
+            ChatOptions sceneOptions = aiModelFactory.resolveSceneChatOptions(modelName, ChatScene.CLASSIFY);
+            Prompt callPrompt = sceneOptions == null
+                    ? new Prompt(new UserMessage(prompt))
+                    : new Prompt(new UserMessage(prompt), sceneOptions);
+            String response = chatModel.call(callPrompt)
                     .getResult().getOutput().getText();
             boolean isGeneric = isYesFirstChar(response);
             long elapsed = System.currentTimeMillis() - start;

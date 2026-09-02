@@ -4,6 +4,7 @@ import com.rag.common.adapter.ModelAdapter;
 import com.rag.common.enums.ModelCategory;
 import com.rag.common.enums.ProtocolType;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.document.MetadataMode;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.model.tool.ToolCallingManager;
@@ -51,7 +52,8 @@ public class OpenAiModelAdapter implements ModelAdapter {
     }
 
     @Override
-    public ChatModel createChatModel(String modelName, String baseUrl, String apiKey, String completionsPath) {
+    public ChatModel createChatModel(String modelName, String baseUrl, String apiKey,
+                                     String completionsPath, Double temperature) {
         // 构建 OpenAiApi：设置超时（连接 10s、读取 240s）
         OpenAiApi.Builder apiBuilder = OpenAiApi.builder()
                 .baseUrl(baseUrl)
@@ -62,9 +64,10 @@ public class OpenAiModelAdapter implements ModelAdapter {
         OpenAiApi openAiApi = apiBuilder.build();
 
         // 构建对话选项：模型名、温度、最大 Token、核采样
+        // 温度读取 YAML 配置（temperature 为 null 时使用 0.7 兜底），而非此前硬编码 0.7
         OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
                 .model(modelName)
-                .temperature(0.7)
+                .temperature(temperature != null ? temperature : 0.7)
                 .maxTokens(4096)
                 .topP(0.9)
                 .build();
@@ -74,6 +77,19 @@ public class OpenAiModelAdapter implements ModelAdapter {
                 .openAiApi(openAiApi)
                 .defaultOptions(chatOptions)
                 .toolCallingManager(null)
+                .build();
+    }
+
+    /**
+     * 构造仅含温度的请求级 OpenAI Options。
+     *
+     * @param temperature 场景解析后的采样温度
+     * @return OpenAiChatOptions（仅 temperature，不含模型名，请求级覆盖 defaultOptions）
+     */
+    @Override
+    public ChatOptions createSceneChatOptions(Double temperature) {
+        return OpenAiChatOptions.builder()
+                .temperature(temperature)
                 .build();
     }
 

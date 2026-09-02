@@ -13,6 +13,7 @@ import com.rag.common.chat.ChatSession;
 import com.rag.common.chat.ChatStreamEvent;
 import com.rag.common.chat.Citation;
 import com.rag.common.chat.SessionStore;
+import com.rag.common.enums.ChatScene;
 import com.rag.common.entity.KbChatConfig;
 import com.rag.common.entity.config.SearchConfig;
 import com.rag.common.exception.RagException;
@@ -129,8 +130,10 @@ public class ChatMessageService {
             // RAG 场景下无可用上下文时，直接返回无答案，不调用 LLM
             answer = "根据现有资料无法回答该问题。";
         } else {
+            // 按场景设置温度：知识库问答（isRag）用 RAG_QA，通用问答用 CHAT_QA
+            ChatScene qaScene = isRag ? ChatScene.RAG_QA : ChatScene.CHAT_QA;
             answer = chatGenerator.generate(
-                    query, contextText, citations, systemPrompt, modelName);
+                    query, contextText, citations, systemPrompt, modelName, qaScene);
         }
 
         // ⑤ 输出安全校验
@@ -202,7 +205,8 @@ public class ChatMessageService {
         List<Citation> citations = List.of();
         // 解析拦截回答专属提示词（方案B）：优先 preQueryFilterAnswerPrompt，回退普通对话提示词
         String systemPrompt = resolveInterceptPrompt();
-        String rawAnswer = chatGenerator.generate(query, null, citations, systemPrompt, modelName);
+        // 拦截的通用问题无检索上下文，按通用问答场景（CHAT_QA）设置温度
+        String rawAnswer = chatGenerator.generate(query, null, citations, systemPrompt, modelName, ChatScene.CHAT_QA);
 
         // 回答开头强制前置统一标注
         String tag = chatProperties.getPreQueryFilterTag();
@@ -270,7 +274,7 @@ public class ChatMessageService {
         // 捕获 done 事件中的完整回答（含前置标注），用于流式完成后持久化助手消息
         AtomicReference<String> fullAnswer = new AtomicReference<>();
 
-        return chatGenerator.generateStream(query, null, "[]", systemPrompt, modelName)
+        return chatGenerator.generateStream(query, null, "[]", systemPrompt, modelName, ChatScene.CHAT_QA)
                 .concatMap(event -> {
                     // 在首个内容片段前插入前置标注
                     if (ChatStreamEvent.TYPE_CONTENT.equals(event.getType())
@@ -375,7 +379,9 @@ public class ChatMessageService {
         // 捕获 done 事件中的完整回答，用于流式完成后持久化助手消息
         AtomicReference<String> fullAnswer = new AtomicReference<>();
 
-        return chatGenerator.generateStream(query, contextText, citationsJson, systemPrompt, modelName)
+        // 按场景设置温度：知识库问答（isRag）用 RAG_QA，通用问答用 CHAT_QA
+        ChatScene qaScene = isRag ? ChatScene.RAG_QA : ChatScene.CHAT_QA;
+        return chatGenerator.generateStream(query, contextText, citationsJson, systemPrompt, modelName, qaScene)
                 .doOnNext(event -> {
                     // 捕获 done 事件中的完整回答
                     if (ChatStreamEvent.TYPE_DONE.equals(event.getType())) {

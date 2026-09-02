@@ -4,6 +4,7 @@ import com.rag.common.adapter.ModelAdapter;
 import com.rag.common.enums.ModelCategory;
 import com.rag.common.enums.ProtocolType;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.OllamaEmbeddingModel;
@@ -35,21 +36,38 @@ public class OllamaModelAdapter implements ModelAdapter {
     }
 
     @Override
-    public ChatModel createChatModel(String modelName, String baseUrl, String apiKey, String completionsPath) {
+    public ChatModel createChatModel(String modelName, String baseUrl, String apiKey,
+                                     String completionsPath, Double temperature) {
         // 构建 OllamaApi：本地协议，仅需 baseUrl
         OllamaApi ollamaApi = OllamaApi.builder()
                 .baseUrl(baseUrl)
                 .build();
 
-        // 构建对话选项
-        OllamaOptions options = OllamaOptions.builder()
-                .model(modelName)
-                .build();
+        // 构建对话选项：模型名 + 温度（配置了 temperature 时写入，否则交由 Ollama 默认）
+        OllamaOptions.Builder optionsBuilder = OllamaOptions.builder()
+                .model(modelName);
+        if (temperature != null) {
+            optionsBuilder.temperature(temperature);
+        }
+        OllamaOptions options = optionsBuilder.build();
 
         // 构建对话模型
         return OllamaChatModel.builder()
                 .ollamaApi(ollamaApi)
                 .defaultOptions(options)
+                .build();
+    }
+
+    /**
+     * 构造仅含温度的请求级 Ollama Options。
+     *
+     * @param temperature 场景解析后的采样温度
+     * @return OllamaOptions（仅 temperature，请求级覆盖 defaultOptions）
+     */
+    @Override
+    public ChatOptions createSceneChatOptions(Double temperature) {
+        return OllamaOptions.builder()
+                .temperature(temperature)
                 .build();
     }
 

@@ -1,10 +1,12 @@
 package com.rag.config.factory;
 
+import com.rag.common.enums.ChatScene;
 import com.rag.common.enums.ModelCategory;
 import com.rag.config.model.RerankModel;
 import com.rag.config.properties.AiModelProperties;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.embedding.EmbeddingModel;
 
 import java.util.List;
@@ -36,6 +38,28 @@ public interface AiModelFactory {
      * @return 对话模型实例
      */
     ChatModel getChatModel(String modelName);
+
+    /**
+     * 解析指定模型在指定场景下的采样温度。
+     * <p>解析优先级：模型级场景温度表 {@code scene-temperatures} 中该场景的取值 &gt; 模型级
+     * {@code temperature}（YAML {@code temperature}）。两层均未配置时返回 {@code null}。</p>
+     *
+     * @param modelName 逻辑模型名
+     * @param scene     对话场景
+     * @return 解析后的场景温度；模型/场景温度均未配置时为 {@code null}
+     */
+    Double resolveSceneTemperature(String modelName, ChatScene scene);
+
+    /**
+     * 获取指定模型在指定场景下的请求级 {@link ChatOptions}。
+     * <p>仅含 temperature（由 {@link #resolveSceneTemperature} 解析），随 {@code Prompt} 携带以
+     * 请求级覆盖模型 {@code defaultOptions} 温度，实现"同一模型不同场景不同温度"且不污染单例缓存。</p>
+     *
+     * @param modelName 逻辑模型名
+     * @param scene     对话场景
+     * @return 对应协议、仅含 temperature 的 ChatOptions；模型不存在或无场景温度可解析时返回 {@code null}
+     */
+    ChatOptions resolveSceneChatOptions(String modelName, ChatScene scene);
 
     /**
      * 按名获取嵌入模型（惰性创建 + 缓存）。

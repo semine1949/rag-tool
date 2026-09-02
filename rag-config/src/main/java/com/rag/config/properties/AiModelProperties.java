@@ -67,8 +67,25 @@ public class AiModelProperties {
         /** API 调用时使用的模型名（模型 ID） */
         private String modelName;
 
-        /** 采样温度，默认 0.7 */
+        /** 采样温度，默认 0.7（作为"未显式场景温度"时的模型级默认兜底） */
         private Double temperature = 0.7;
+
+        /**
+         * 场景化温度表：按 {@link com.rag.common.enums.ChatScene} 场景为同一模型配置不同温度。
+         * <p>key 为场景标识（如 {@code classify} / {@code rewrite} / {@code rag-qa} / {@code chat-qa}，
+         * 忽略大小写与下划线/连字符），value 为该场景下的采样温度。
+         * 请求级覆盖模型 {@code defaultOptions} 温度，不污染缓存实例；某场景未配置时回退 {@link #temperature}。</p>
+         * <pre>{@code
+         * qwen-turbo:
+         *   temperature: 0.7
+         *   scene-temperatures:
+         *     classify: 0.0
+         *     rewrite: 0.0
+         *     rag-qa: 0.2
+         *     chat-qa: 0.6
+         * }</pre>
+         */
+        private Map<String, Double> sceneTemperatures = new HashMap<>();
 
         /** 最大生成 Token 数 */
         private Integer maxTokens;

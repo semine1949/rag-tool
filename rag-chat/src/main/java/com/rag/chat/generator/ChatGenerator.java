@@ -2,6 +2,7 @@ package com.rag.chat.generator;
 
 import com.rag.common.chat.Citation;
 import com.rag.common.chat.ChatStreamEvent;
+import com.rag.common.enums.ChatScene;
 import com.rag.chat.config.ChatProperties;
 import com.rag.config.factory.AiModelFactory;
 import org.slf4j.Logger;
@@ -10,6 +11,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
@@ -55,6 +57,22 @@ public class ChatGenerator {
     }
 
     /**
+     * 同步生成回答（旧签名兼容重载，场景默认 {@link ChatScene#CHAT_QA}）。
+     * <p>新调用方请使用带 {@code qaScene} 参数的重载，以便按场景差异化设置温度。</p>
+     *
+     * @param query        用户提问
+     * @param contextText  召回上下文文本（含编号 [1]..[n]）
+     * @param citations    引用列表
+     * @param systemPrompt 系统提示词
+     * @param modelName    对话模型名（为空使用全局默认）
+     * @return 生成的回答文本
+     */
+    public String generate(String query, String contextText, List<Citation> citations,
+                           String systemPrompt, String modelName) {
+        return generate(query, contextText, citations, systemPrompt, modelName, ChatScene.CHAT_QA);
+    }
+
+    /**
      * 同步生成回答。
      *
      * @param query           用户提问
@@ -62,14 +80,18 @@ public class ChatGenerator {
      * @param citations       引用列表
      * @param systemPrompt    系统提示词
      * @param modelName       对话模型名（为空使用全局默认）
+     * @param qaScene         问答场景（{@link ChatScene#RAG_QA} 知识库问答 / {@link ChatScene#CHAT_QA} 通用问答），
+     *                        用于请求级覆盖场景化温度；为 {@code null} 时不附加 Options 走模型默认
      * @return 生成的回答文本
      */
     public String generate(String query, String contextText, List<Citation> citations,
-                           String systemPrompt, String modelName) {
+                           String systemPrompt, String modelName, ChatScene qaScene) {
         try {
-            ChatModel chatModel = aiModelFactory.getChatModel(resolveModelName(modelName));
+            String resolvedModel = resolveModelName(modelName);
+            ChatModel chatModel = aiModelFactory.getChatModel(resolvedModel);
             List<Message> messages = buildMessages(query, contextText, systemPrompt);
-            Prompt prompt = new Prompt(messages);
+            // 按场景携带请求级温度 Options，实现"同一模型不同问答场景不同温度"（RAG_QA 0.2 / CHAT_QA 0.6）
+            Prompt prompt = buildScenePrompt(messages, resolvedModel, qaScene);
             String answer = chatModel.call(prompt).getResult().getOutput().getText();
             return answer == null ? "" : answer;
         } catch (Exception e) {
@@ -79,7 +101,7 @@ public class ChatGenerator {
     }
 
     /**
-     * 流式生成回答。
+     * 流式生成回答（旧签名兼容重载，场景默认 {@link ChatScene#CHAT_QA}）。
      * <p>事件顺序：citations → content（多次）→ done。</p>
      *
      * @param query        用户提问
@@ -92,11 +114,32 @@ public class ChatGenerator {
     public Flux<ChatStreamEvent> generateStream(String query, String contextText,
                                                 String citationsJson, String systemPrompt,
                                                 String modelName) {
+        return generateStream(query, contextText, citationsJson, systemPrompt, modelName, ChatScene.CHAT_QA);
+    }
+
+    /**
+     * 流式生成回答。
+     * <p>事件顺序：citations → content（多次）→ done。</p>
+     *
+     * @param query        用户提问
+     * @param contextText  召回上下文文本
+     * @param citationsJson 引用列表的 JSON 字符串
+     * @param systemPrompt 系统提示词
+     * @param modelName    对话模型名（为空使用全局默认）
+     * @param qaScene      问答场景（{@link ChatScene#RAG_QA} 知识库问答 / {@link ChatScene#CHAT_QA} 通用问答），
+     *                     用于请求级覆盖场景化温度；为 {@code null} 时不附加 Options 走模型默认
+     * @return 事件流
+     */
+    public Flux<ChatStreamEvent> generateStream(String query, String contextText,
+                                                String citationsJson, String systemPrompt,
+                                                String modelName, ChatScene qaScene) {
         StringBuilder fullAnswer = new StringBuilder();
         try {
-            ChatModel chatModel = aiModelFactory.getChatModel(resolveModelName(modelName));
+            String resolvedModel = resolveModelName(modelName);
+            ChatModel chatModel = aiModelFactory.getChatModel(resolvedModel);
             List<Message> messages = buildMessages(query, contextText, systemPrompt);
-            Prompt prompt = new Prompt(messages);
+            // 按场景携带请求级温度 Options（RAG_QA 0.2 / CHAT_QA 0.6）
+            Prompt prompt = buildScenePrompt(messages, resolvedModel, qaScene);
 
             // 先推送引用事件
             Flux<ChatStreamEvent> citationsEvent = Flux.just(
@@ -161,6 +204,24 @@ public class ChatGenerator {
     private String resolveModelName(String modelName) {
         return (modelName == null || modelName.isBlank())
                 ? chatProperties.getChatModel() : modelName;
+    }
+
+    /**
+     * 按场景构造携带请求级温度 Options 的 Prompt。
+     * <p>场景为 {@code null} 或场景 Options 解析失败（模型配置缺失）时不附加 Options，
+     * 走模型 {@code defaultOptions} 默认温度，保证健壮性。</p>
+     *
+     * @param messages     消息列表
+     * @param modelName    实际使用的逻辑模型名（已解析）
+     * @param qaScene      问答场景
+     * @return 请求级 Prompt
+     */
+    private Prompt buildScenePrompt(List<Message> messages, String modelName, ChatScene qaScene) {
+        if (qaScene == null) {
+            return new Prompt(messages);
+        }
+        ChatOptions sceneOptions = aiModelFactory.resolveSceneChatOptions(modelName, qaScene);
+        return sceneOptions == null ? new Prompt(messages) : new Prompt(messages, sceneOptions);
     }
 
     /**

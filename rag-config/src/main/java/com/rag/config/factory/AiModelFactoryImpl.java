@@ -2,6 +2,7 @@ package com.rag.config.factory;
 
 import com.rag.common.adapter.ModelAdapter;
 import com.rag.common.client.OpenAiClient;
+import com.rag.common.enums.ChatScene;
 import com.rag.common.enums.ModelCategory;
 import com.rag.common.enums.ProtocolType;
 import com.rag.config.model.OpenAiRerankModel;
@@ -11,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.document.MetadataMode;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
@@ -111,6 +113,81 @@ public class AiModelFactoryImpl implements AiModelFactory {
         return chatModelCache.computeIfAbsent(modelName, this::createChatModel);
     }
 
+    @Override
+    public Double resolveSceneTemperature(String modelName, ChatScene scene) {
+        if (scene == null) {
+            return null;
+        }
+        AiModelProperties.ModelConfig config = getModelConfig(modelName);
+        if (config == null) {
+            // 模型未配置：无场景温度可解析，返回 null（调用方回退模型默认，见 resolveSceneChatOptions）
+            log.warn("[SCENE-TEMP] 未找到模型配置，场景温度返回 null modelName={}, scene={}",
+                    modelName, scene);
+            return null;
+        }
+        // ① 模型级场景温度表命中则优先
+        Double sceneTemp = lookupSceneTemperature(config, scene);
+        if (sceneTemp != null) {
+            return sceneTemp;
+        }
+        // ② 回退模型级 temperature（YAML temperature 作为模型级默认）；未配置则为 null
+        return config.getTemperature();
+    }
+
+    @Override
+    public ChatOptions resolveSceneChatOptions(String modelName, ChatScene scene) {
+        AiModelProperties.ModelConfig config = getModelConfig(modelName);
+        if (config == null) {
+            log.warn("[SCENE-TEMP] 未找到模型配置，无法构造场景 Options modelName={}, scene={}",
+                    modelName, scene);
+            return null;
+        }
+        Double temperature = resolveSceneTemperature(modelName, scene);
+        // 无场景温度（场景表未命中且模型级 temperature 未配置）：返回 null，
+        // 调用方据此不加请求级 Options，直接走模型 defaultOptions 默认温度
+        if (temperature == null) {
+            return null;
+        }
+        ModelAdapter adapter = findAdapter(config);
+        return adapter.createSceneChatOptions(temperature);
+    }
+
+    /**
+     * 从模型配置的场景温度表中按场景取值。
+     * <p>配置 key 可能使用 kebab-case / snake_case / 大小写（如 {@code rag-qa} / {@code RAG_QA}），
+     * 此处归一化匹配（忽略大小写、下划线与连字符），保证绑定容错。</p>
+     *
+     * @param config 模型配置
+     * @param scene  对话场景
+     * @return 命中返回温度，未命中返回 {@code null}
+     */
+    private Double lookupSceneTemperature(AiModelProperties.ModelConfig config, ChatScene scene) {
+        if (config.getSceneTemperatures() == null || config.getSceneTemperatures().isEmpty()) {
+            return null;
+        }
+        // 归一化目标 key：去掉下划线/连字符、转小写
+        String target = normalizeKey(scene.name());
+        for (Map.Entry<String, Double> entry : config.getSceneTemperatures().entrySet()) {
+            if (target.equals(normalizeKey(entry.getKey()))) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 归一化配置 key：去除所有下划线/连字符并转小写，用于场景温度表容错匹配。
+     *
+     * @param key 原始 key
+     * @return 归一化后的 key
+     */
+    private String normalizeKey(String key) {
+        if (key == null) {
+            return "";
+        }
+        return key.replace("_", "").replace("-", "").toLowerCase(java.util.Locale.ROOT);
+    }
+
     // ==================== 嵌入模型 ====================
 
     @Override
@@ -209,7 +286,7 @@ public class AiModelFactoryImpl implements AiModelFactory {
         }
         ModelAdapter adapter = findAdapter(config);
         return adapter.createChatModel(config.getModelName(), config.getBaseUrl(),
-                config.getApiKey(), config.getCompletionsPath());
+                config.getApiKey(), config.getCompletionsPath(), config.getTemperature());
     }
 
     /**
