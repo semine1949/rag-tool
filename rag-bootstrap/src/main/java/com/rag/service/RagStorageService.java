@@ -249,22 +249,47 @@ public class RagStorageService {
 
             // ===== 11. 分片原文持久化到 doc_chunk 表 =====
             // 写入分片策略（chunk_mode，取自 splitter 的 CHUNK_MODE）与参数快照（params_snapshot，JSON）
-            String chunkMode = splitter instanceof ParentChildTextSplitter
+            // [v4 修复] chunk_id/chunk_type/parent_chunk_id 改从分块器写入的 Document metadata 读取：
+            //   - hierarchical-model：父块 chunk_type=parent（parent_chunk_id=NULL）、子块 chunk_type=child
+            //     （parent_chunk_id=父块 chunk_id, 与向量元数据对齐，无需主键回填）；
+            //   - text-model/其它：chunk_type=flat（parent_chunk_id=NULL）。
+            //   chunk_id 统一存分块器的业务 UUID（metadata.chunkId），不再依赖 MySQL 自增主键承载父子。
+            boolean hierarchical = splitter instanceof ParentChildTextSplitter;
+            String chunkMode = hierarchical
                     ? ParentChildTextSplitter.CHUNK_MODE : SizeTextSplitter.CHUNK_MODE;
             String paramsSnapshot = buildParamsSnapshot(splitter);
             List<DocChunk> docChunks = new ArrayList<>();
             for (int i = 0; i < chunks.size(); i++) {
                 Document chunk = chunks.get(i);
+                Map<String, Object> meta = chunk.getMetadata();
+                // 业务分片 UUID：分块器写入的 chunkId；缺失时兜底用 Weaviate object ID
+                String chunkId = strMeta(meta, "chunkId");
+                if (chunkId == null || chunkId.isBlank()) {
+                    chunkId = (String) meta.get("id");
+                }
+                // 分片类型与父分片 UUID：仅 hierarchical-model 区分父子，其余一律 flat
+                String chunkType = "flat";
+                String parentChunkId = null;
+                if (hierarchical) {
+                    String typeFromMeta = strMeta(meta, "chunkType");
+                    chunkType = ("child".equals(typeFromMeta) || "parent".equals(typeFromMeta))
+                            ? typeFromMeta : "flat";
+                    if ("child".equals(chunkType)) {
+                        // 子块：parent_chunk_id 存父块 chunk_id(UUID)，与检索/向量层语义一致
+                        parentChunkId = strMeta(meta, "parentChunkId");
+                    }
+                }
                 DocChunk dc = DocChunk.builder()
+                        .chunkId(chunkId)
                         .docId(docId)
                         .tenantId(tenantId)
                         .kbId(kbId)
                         .versionId(versionId)
                         .chunkIndex(i)
-                        .chunkType("flat")  // 默认扁平分片，PARENT_CHILD 策略时由 Chunker 覆写元数据
-                        .parentChunkId(null)
+                        .chunkType(chunkType)
+                        .parentChunkId(parentChunkId)
                         .content(chunk.getText())
-                        .vectorId((String) chunk.getMetadata().get("id")) // Weaviate 返回的 object ID
+                        .vectorId((String) meta.get("id")) // Weaviate 返回的 object ID
                         .chunkMode(chunkMode)
                         .paramsSnapshot(paramsSnapshot)
                         .createTime(new Date())
@@ -273,7 +298,8 @@ public class RagStorageService {
             }
             if (!docChunks.isEmpty()) {
                 docChunkMapper.batchInsert(docChunks);
-                log.info("分片原文已持久化到 doc_chunk 表, docId={}, count={}", docId, docChunks.size());
+                log.info("分片原文已持久化到 doc_chunk 表, docId={}, count={}, hierarchical={}",
+                        docId, docChunks.size(), hierarchical);
             }
 
             // ===== 12. 推进状态 → COMPLETED，更新分片数与版本 =====
@@ -513,6 +539,18 @@ public class RagStorageService {
             log.warn("分片参数快照序列化失败, error={}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 从元数据 Map 中安全读取字符串字段（兼容数值类型，统一转 String）。
+     *
+     * @param meta 元数据
+     * @param key  字段名
+     * @return 字符串值；缺失或非字符串基本类型时按需转换，可能为 null
+     */
+    private String strMeta(Map<String, Object> meta, String key) {
+        Object v = meta.get(key);
+        return v == null ? null : String.valueOf(v);
     }
 
     private String detectContentType(String filename) {

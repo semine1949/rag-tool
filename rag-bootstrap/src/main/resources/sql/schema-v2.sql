@@ -165,17 +165,22 @@ CREATE TABLE doc_version (
 --   chunk_mode        记录该分片实际采用的分片策略名（如 FIXED_SIZE / TEXT_MODEL / HIERARCHICAL_MODEL）
 --   params_snapshot   以 JSON 形式记录该分片实际生效的分块参数快照
 DROP TABLE IF EXISTS doc_chunk;
+-- [v4 变更] 命名统一：消除 "chunk_id" 语义歧义
+--   doc_chunk_id   : doc_chunk 表行主键（BIGINT 自增，MySQL 内部身份）
+--   chunk_id       : 业务分片 ID（VARCHAR(36) UUID，= 分块器/向量元数据 chunkId），与检索/前端/去重/父子全链路对齐
+--   parent_chunk_id: 父分片业务 ID（VARCHAR(36)，存父块 chunk_id），仅 child 行有值
 CREATE TABLE doc_chunk (
-    chunk_id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '分片ID（主键）',
+    doc_chunk_id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '分片表主键（自增，MySQL 行身份；不承担业务键）',
     doc_id                BIGINT       NOT NULL COMMENT '所属文档ID（关联 kb_document.doc_id）',
     tenant_id             BIGINT       NOT NULL COMMENT '所属租户ID',
     kb_id                 BIGINT       NOT NULL COMMENT '所属知识库ID',
     version_id            BIGINT       DEFAULT NULL COMMENT '关联版本ID（doc_version.id），可为空以支持未版本化场景',
 
     -- 分片定位
+    chunk_id              VARCHAR(36)  NOT NULL COMMENT '业务分片ID（UUID，与向量元数据 chunkId 一致），父块/子块/扁平块每行唯一',
     chunk_index           INT          NOT NULL COMMENT '分片序号（从0开始，记录分片在文档中的顺序）',
     chunk_type            VARCHAR(32)  NOT NULL DEFAULT 'flat' COMMENT '父子分片类型：parent=父分片（可包含子分片）, child=子分片（从属于某父分片）, flat=扁平分片（非层级策略下的独立分片）',
-    parent_chunk_id       BIGINT       DEFAULT NULL COMMENT '父分片ID（自引用，用于 PARENT_CHILD 分片策略的层级关系）。值为 NULL 时：chunk_type=flat 表示独立分片，chunk_type=parent 表示顶级父分片',
+    parent_chunk_id       VARCHAR(36)  DEFAULT NULL COMMENT '父分片业务ID（存父块的 chunk_id(UUID)，用于层级策略的父子关联）。值为 NULL 时：chunk_type=flat 表示独立分片，chunk_type=parent 表示顶级父分片',
 
     -- 分片内容（v2 核心：完整持久化分片原文）
     content               LONGTEXT     NOT NULL COMMENT '分片原文（完整持久化，不依赖向量数据库存储原文）',
@@ -190,16 +195,25 @@ CREATE TABLE doc_chunk (
     -- 时间戳
     create_time           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
-    PRIMARY KEY (chunk_id),
+    PRIMARY KEY (doc_chunk_id),
     KEY idx_doc_id (doc_id),
     KEY idx_kb_id (kb_id),
     KEY idx_tenant_id (tenant_id),
     KEY idx_version_id (version_id),
     KEY idx_doc_chunk_order (doc_id, chunk_index),
     KEY idx_vector_id (vector_id),
+    KEY idx_chunk_id (chunk_id),
     KEY idx_parent_chunk_id (parent_chunk_id),
     KEY idx_chunk_mode (chunk_mode)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文档分片表（v3：分片策略与参数快照下沉至分片维度）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文档分片表（v4：chunk_id 改业务UUID，主键 doc_chunk_id 与业务键分离）';
+
+-- ==================== doc_chunk 迁移（存量表 ALTER） ====================
+-- 若为存量库（doc_chunk 已存在，采用旧命名 chunk_id BIGINT 主键），执行以下迁移：
+-- ALTER TABLE doc_chunk
+--     CHANGE COLUMN chunk_id doc_chunk_id BIGINT NOT NULL AUTO_INCREMENT,
+--     ADD COLUMN chunk_id VARCHAR(36) NOT NULL DEFAULT '' AFTER doc_chunk_id,
+--     MODIFY COLUMN parent_chunk_id VARCHAR(36) DEFAULT NULL,
+--     ADD KEY idx_chunk_id (chunk_id);
 
 -- ==================== 角色字典种子数据 ====================
 -- 说明：SUPER_ADMIN（role_id=0）为平台超级用户，不属于任何租户实体，

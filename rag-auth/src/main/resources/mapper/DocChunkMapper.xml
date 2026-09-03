@@ -4,7 +4,8 @@
 <mapper namespace="com.rag.auth.mapper.DocChunkMapper">
 
     <resultMap id="DocChunkResultMap" type="com.rag.common.entity.DocChunk">
-        <id property="chunkId" column="chunk_id"/>
+        <id property="docChunkId" column="doc_chunk_id"/>
+        <result property="chunkId" column="chunk_id"/>
         <result property="docId" column="doc_id"/>
         <result property="tenantId" column="tenant_id"/>
         <result property="kbId" column="kb_id"/>
@@ -21,44 +22,51 @@
         <result property="updateTime" column="update_time"/>
     </resultMap>
 
-    <select id="findById" resultMap="DocChunkResultMap">
-        SELECT chunk_id, doc_id, tenant_id, kb_id, version_id, chunk_index,
+    <select id="findByChunkId" resultMap="DocChunkResultMap">
+        SELECT doc_chunk_id, chunk_id, doc_id, tenant_id, kb_id, version_id, chunk_index,
                chunk_type, parent_chunk_id, content, vector_id,
                chunk_mode, params_snapshot, create_time, update_time
         FROM doc_chunk WHERE chunk_id = #{chunkId}
     </select>
 
+    <select id="findByParentChunkId" resultMap="DocChunkResultMap">
+        SELECT doc_chunk_id, chunk_id, doc_id, tenant_id, kb_id, version_id, chunk_index,
+               chunk_type, parent_chunk_id, content, vector_id,
+               chunk_mode, params_snapshot, create_time, update_time
+        FROM doc_chunk WHERE parent_chunk_id = #{parentChunkId} ORDER BY chunk_index ASC
+    </select>
+
     <select id="findByDocId" resultMap="DocChunkResultMap">
-        SELECT chunk_id, doc_id, tenant_id, kb_id, version_id, chunk_index,
+        SELECT doc_chunk_id, chunk_id, doc_id, tenant_id, kb_id, version_id, chunk_index,
                chunk_type, parent_chunk_id, content, vector_id,
                chunk_mode, params_snapshot, create_time, update_time
         FROM doc_chunk WHERE doc_id = #{docId} ORDER BY chunk_index ASC
     </select>
 
     <select id="findByDocIdAndVersion" resultMap="DocChunkResultMap">
-        SELECT chunk_id, doc_id, tenant_id, kb_id, version_id, chunk_index,
+        SELECT doc_chunk_id, chunk_id, doc_id, tenant_id, kb_id, version_id, chunk_index,
                chunk_type, parent_chunk_id, content, vector_id,
                chunk_mode, params_snapshot, create_time, update_time
         FROM doc_chunk WHERE doc_id = #{docId} AND version_id = #{versionId}
         ORDER BY chunk_index ASC
     </select>
 
-    <insert id="insert" useGeneratedKeys="true" keyProperty="chunkId" keyColumn="chunk_id">
-        INSERT INTO doc_chunk (doc_id, tenant_id, kb_id, version_id, chunk_index,
+    <insert id="insert" useGeneratedKeys="true" keyProperty="docChunkId" keyColumn="doc_chunk_id">
+        INSERT INTO doc_chunk (chunk_id, doc_id, tenant_id, kb_id, version_id, chunk_index,
                                chunk_type, parent_chunk_id, content, vector_id,
                                chunk_mode, params_snapshot, create_time)
-        VALUES (#{docId}, #{tenantId}, #{kbId}, #{versionId}, #{chunkIndex},
+        VALUES (#{chunkId}, #{docId}, #{tenantId}, #{kbId}, #{versionId}, #{chunkIndex},
                 #{chunkType}, #{parentChunkId}, #{content}, #{vectorId},
                 #{chunkMode}, #{paramsSnapshot}, #{createTime})
     </insert>
 
-    <insert id="batchInsert" useGeneratedKeys="true" keyProperty="chunkId" keyColumn="chunk_id">
-        INSERT INTO doc_chunk (doc_id, tenant_id, kb_id, version_id, chunk_index,
+    <insert id="batchInsert" useGeneratedKeys="true" keyProperty="docChunkId" keyColumn="doc_chunk_id">
+        INSERT INTO doc_chunk (chunk_id, doc_id, tenant_id, kb_id, version_id, chunk_index,
                                chunk_type, parent_chunk_id, content, vector_id,
                                chunk_mode, params_snapshot, create_time)
         VALUES
         <foreach collection="list" item="item" separator=",">
-            (#{item.docId}, #{item.tenantId}, #{item.kbId}, #{item.versionId}, #{item.chunkIndex},
+            (#{item.chunkId}, #{item.docId}, #{item.tenantId}, #{item.kbId}, #{item.versionId}, #{item.chunkIndex},
              #{item.chunkType}, #{item.parentChunkId}, #{item.content}, #{item.vectorId},
              #{item.chunkMode}, #{item.paramsSnapshot}, #{item.createTime})
         </foreach>

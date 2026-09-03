@@ -13,9 +13,16 @@ import java.util.List;
 public interface DocChunkMapper {
 
     /**
-     * 按分片ID查询
+     * 按业务分片ID（chunk_id, UUID）查询单个分片。
+     * <p>父子关联按 chunk_id 对齐：子块 parent_chunk_id = 父块 chunk_id，
+     * 可用于按子块反查父块/按业务键溯源。</p>
      */
-    DocChunk findById(@Param("chunkId") Long chunkId);
+    DocChunk findByChunkId(@Param("chunkId") String chunkId);
+
+    /**
+     * 按父分片业务ID（parent_chunk_id）查询其全部子分片。
+     */
+    List<DocChunk> findByParentChunkId(@Param("parentChunkId") String parentChunkId);
 
     /**
      * 按文档ID查询全部分片（按 chunk_index 排序）
