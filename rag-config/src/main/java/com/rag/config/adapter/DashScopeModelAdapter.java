@@ -37,18 +37,25 @@ public class DashScopeModelAdapter implements ModelAdapter {
 
     @Override
     public ChatModel createChatModel(String modelName, String baseUrl, String apiKey,
-                                     String completionsPath, Double temperature) {
+                                     String completionsPath, Double temperature, Integer maxTokens) {
         // 构建 DashScopeApi
         DashScopeApi dashScopeApi = DashScopeApi.builder()
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)
                 .build();
 
-        // 构建对话选项（DashScopeChatOptions 无链式 model 方法，使用 setter）
-        // 温度读取 YAML 配置（temperature 为 null 时使用 0.7 兜底），而非此前硬编码 0.7
-        DashScopeChatOptions chatOptions = new DashScopeChatOptions();
-        chatOptions.setModel(modelName);
-        chatOptions.setTemperature(temperature != null ? temperature : 0.7);
+        // 构建对话选项（DashScopeChatOptions 此版本 setMaxTokens() 为无参缺陷方法，改用官方 builder 链式 withXxx）
+        // 温度读取 YAML 配置（temperature 为 null 时不设，交由服务端默认）
+        // 最大 Token 读取 YAML 配置（maxTokens 非 null 时才设置，否则交由服务端默认）
+        DashScopeChatOptions.DashscopeChatOptionsBuilder optionsBuilder = DashScopeChatOptions.builder()
+                .withModel(modelName);
+        if (temperature != null) {
+            optionsBuilder.withTemperature(temperature);
+        }
+        if (maxTokens != null) {
+            optionsBuilder.withMaxToken(maxTokens);
+        }
+        DashScopeChatOptions chatOptions = optionsBuilder.build();
 
         // 构建对话模型
         return DashScopeChatModel.builder()

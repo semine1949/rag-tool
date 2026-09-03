@@ -286,7 +286,8 @@ public class AiModelFactoryImpl implements AiModelFactory {
         }
         ModelAdapter adapter = findAdapter(config);
         return adapter.createChatModel(config.getModelName(), config.getBaseUrl(),
-                config.getApiKey(), config.getCompletionsPath(), config.getTemperature());
+                config.getApiKey(), config.getCompletionsPath(), config.getTemperature(),
+                config.getMaxTokens());
     }
 
     /**

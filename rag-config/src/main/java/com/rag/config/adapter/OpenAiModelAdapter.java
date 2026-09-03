@@ -53,7 +53,7 @@ public class OpenAiModelAdapter implements ModelAdapter {
 
     @Override
     public ChatModel createChatModel(String modelName, String baseUrl, String apiKey,
-                                     String completionsPath, Double temperature) {
+                                     String completionsPath, Double temperature, Integer maxTokens) {
         // 构建 OpenAiApi：设置超时（连接 10s、读取 240s）
         OpenAiApi.Builder apiBuilder = OpenAiApi.builder()
                 .baseUrl(baseUrl)
@@ -64,11 +64,12 @@ public class OpenAiModelAdapter implements ModelAdapter {
         OpenAiApi openAiApi = apiBuilder.build();
 
         // 构建对话选项：模型名、温度、最大 Token、核采样
-        // 温度读取 YAML 配置（temperature 为 null 时使用 0.7 兜底），而非此前硬编码 0.7
+        // 温度读取 YAML 配置（temperature 为 null 时使用 0.7 兜底），而非硬编码
+        // 最大 Token 读取 YAML 配置（maxTokens 为 null 时使用 4096 兜底），而非此前硬编码 4096
         OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
                 .model(modelName)
                 .temperature(temperature != null ? temperature : 0.7)
-                .maxTokens(4096)
+                .maxTokens(maxTokens != null ? maxTokens : 4096)
                 .topP(0.9)
                 .build();
 

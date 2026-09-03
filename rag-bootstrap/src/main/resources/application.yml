@@ -126,7 +126,7 @@ rag:
       2. 引用资料内容时，在引用处标注引用编号，格式为 [n]，n 与资料编号一一对应。
       3. 若参考资料不足以回答问题，请明确告知用户“根据现有资料无法回答”，不要猜测。
       4. 回答使用与用户提问相同的语言，保持简洁、准确、有条理。
-    pre-query-filter-enabled: true
+    pre-query-filter-enabled: false
     # 分类用模型（为空复用 chat-model，全程复用现有对话模型）
     pre-query-filter-model:
     pre-query-filter-prompt: |

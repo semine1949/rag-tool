@@ -50,10 +50,11 @@ public interface ModelAdapter {
      * @param apiKey          API 密钥
      * @param completionsPath 自定义 Completions PATH（可为空）
      * @param temperature     采样温度（模型级默认温度，来自 YAML 配置；为 null 时适配器使用自身默认）
+     * @param maxTokens       最大生成 Token 数（模型级默认，来自 YAML 配置；为 null 时适配器使用自身默认）
      * @return 创建好的对话模型实例
      */
     ChatModel createChatModel(String modelName, String baseUrl, String apiKey,
-                              String completionsPath, Double temperature);
+                              String completionsPath, Double temperature, Integer maxTokens);
 
     /**
      * 构造"仅覆盖温度"的请求级场景 Options。

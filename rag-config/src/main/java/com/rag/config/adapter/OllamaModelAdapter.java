@@ -37,17 +37,22 @@ public class OllamaModelAdapter implements ModelAdapter {
 
     @Override
     public ChatModel createChatModel(String modelName, String baseUrl, String apiKey,
-                                     String completionsPath, Double temperature) {
+                                     String completionsPath, Double temperature, Integer maxTokens) {
         // 构建 OllamaApi：本地协议，仅需 baseUrl
         OllamaApi ollamaApi = OllamaApi.builder()
                 .baseUrl(baseUrl)
                 .build();
 
-        // 构建对话选项：模型名 + 温度（配置了 temperature 时写入，否则交由 Ollama 默认）
+        // 构建对话选项：模型名 + 温度 + 最大 Token
+        // 温度/最大 Token 读取 YAML 配置（null 时交由 Ollama 默认，不强制写入）
         OllamaOptions.Builder optionsBuilder = OllamaOptions.builder()
                 .model(modelName);
         if (temperature != null) {
             optionsBuilder.temperature(temperature);
+        }
+        // maxTokens 映射为 Ollama 的 num_predict（单次生成的最大 Token 数）
+        if (maxTokens != null) {
+            optionsBuilder.numPredict(maxTokens);
         }
         OllamaOptions options = optionsBuilder.build();
 
