@@ -47,10 +47,6 @@ public class ContextAssembler {
         for (int i = 0; i < documents.size(); i++) {
             Document doc = documents.get(i);
             String snippet = doc.getText();
-            // 截断过长片段
-            if (snippet.length() > MAX_SNIPPET_LENGTH) {
-                snippet = snippet.substring(0, MAX_SNIPPET_LENGTH) + "...";
-            }
 
             int snippetTokens = estimateTokens(snippet);
             // Token 预算耗尽，停止追加（保留 100 token 余量给编号与换行符）
