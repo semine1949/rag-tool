@@ -70,6 +70,86 @@ spring:
           max-tokens: 2048
           stream-enabled: true
 
+        # deepseek-ai/DeepSeek-R1 — 硅基流动（推理型：回答前先生成思维链 CoT，适合复杂推理/深度分析）
+        # 调温依据：R1 采样温度对输出影响大，官方推荐 0.5~0.7 与 top_p 0.7（过低易使推理退化、过高易发散）；
+        # 思维链会占用较多输出 token，max-tokens 需放大避免截断。
+        deepseek-r1:
+          category: CHAT
+          protocol: OPENAI
+          base-url: https://api.siliconflow.cn
+          api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+          model-name: deepseek-ai/DeepSeek-R1
+          # 模型级默认温度（R1 官方推荐区间 0.5~0.7）
+          temperature: 0.6
+          # R1 官方推荐核采样
+          top-p: 0.7
+          scene-temperatures:
+            # 分类/改写若落到 R1：确定性任务走低温
+            classify: 0.0
+            rewrite: 0.0
+            # RAG 问答：沿用官方 0.6，兼顾思维链稳定性与回答忠实度
+            rag-qa: 0.6
+            # 通用问答：R1 为推理模型而非闲聊模型，保持 0.6 即可
+            chat-qa: 0.6
+          max-tokens: 8192
+          stream-enabled: true
+
+        # deepseek-ai/DeepSeek-V4-Flash — 硅基流动（V4 系列"效率之选"：1M 超长上下文、高吞吐、低成本，适合高并发/长文档问答）
+        # 调温依据：通用对话型 MoE，默认 0.7；RAG 有检索上下文做事实锚点故降温到 0.3 提升严谨性。
+        deepseek-v4-flash:
+          category: CHAT
+          protocol: OPENAI
+          base-url: https://api.siliconflow.cn
+          api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+          model-name: deepseek-ai/DeepSeek-V4-Flash
+          # 模型级默认温度
+          temperature: 0.7
+          scene-temperatures:
+            classify: 0.0
+            rewrite: 0.0
+            # 知识库问答：基于检索上下文严谨回答，低温
+            rag-qa: 0.3
+            # 通用问答/闲聊：允许适度发散
+            chat-qa: 0.7
+          max-tokens: 8192
+          stream-enabled: true
+
+        # Qwen/Qwen3.5-122B-A10B — 硅基流动（旗舰级 MoE，混合线性注意力 + 稀疏专家，256K 上下文，指令遵循与复杂推理强）
+        # 调温依据：Qwen3.5 系列官方建议常规对话 0.7；RAG 问答带检索锚点用 0.3 保证引用准确、减少幻觉。
+        # 注意：逻辑 key 不能用点号（如 qwen3.5-122b），@ConfigurationProperties 绑定 Map 时点号会被当作层级分隔符导致条目丢失。
+        qwen35-122b:
+          category: CHAT
+          protocol: OPENAI
+          base-url: https://api.siliconflow.cn
+          api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+          model-name: Qwen/Qwen3.5-122B-A10B
+          temperature: 0.7
+          scene-temperatures:
+            classify: 0.0
+            rewrite: 0.0
+            rag-qa: 0.3
+            chat-qa: 0.7
+          max-tokens: 8192
+          stream-enabled: true
+
+        # Qwen/Qwen3.6-35B-A3B — 硅基流动（35B 总参 / 3B 激活 MoE，智能体编程与多模态推理能力突出，成本效率高）
+        # 调温依据：定位为"小钢炮"通用推理模型，指令遵循好；常规对话 0.7，RAG 场景 0.3 以贴近文档事实。
+        # 注意：逻辑 key 不能用点号（原因同上），故命名为 qwen36-35b。
+        qwen36-35b:
+          category: CHAT
+          protocol: OPENAI
+          base-url: https://api.siliconflow.cn
+          api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
+          model-name: Qwen/Qwen3.6-35B-A3B
+          temperature: 0.7
+          scene-temperatures:
+            classify: 0.0
+            rewrite: 0.0
+            rag-qa: 0.3
+            chat-qa: 0.7
+          max-tokens: 8192
+          stream-enabled: true
+
         # ==================== OCR 识别模型 ====================
         # deepseek-ai/DeepSeek-OCR — 硅基流动（OCR 走自研 OpenAiClient 直连）
         deepseek-ocr:
