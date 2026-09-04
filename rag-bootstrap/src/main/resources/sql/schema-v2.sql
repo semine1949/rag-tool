@@ -259,3 +259,69 @@ ON DUPLICATE KEY UPDATE role_name = VALUES(role_name), description = VALUES(desc
 --      params_snapshot   -- 参数快照（JSON），记录该分片实际生效的分块参数
 --    同一文档内不同分片可携带各自的分片策略与参数溯源信息，便于检索结果溯源与策略复盘。
 -- ============================================================================
+
+-- ==================== 会话表（v5：LLM 对话消息持久化） ====================
+-- 设计目标：实现「会话-消息」1:N 双表 + 「MySQL 全量持久化 + Redis 实时上下文」双存储。
+--   - 会话数据在 MySQL 全量持久化，进程重启不丢失、可按 sessionId 完整回放；
+--   - Redis 仅作为实时上下文缓存（带 TTL），Redis 数据丢失时可由本表重建会话上下文；
+--   - 会话物理主键为自增 id，业务外键为 session_id(UUID)；
+--   - deleted=1 表示逻辑删除（清空会话时置位），查询一律 AND deleted = 0。
+DROP TABLE IF EXISTS chat_session;
+CREATE TABLE chat_session (
+    id                    BIGINT       NOT NULL AUTO_INCREMENT COMMENT '会话表物理自增主键（MySQL 行身份，不承担业务键）',
+    session_id            VARCHAR(36)  NOT NULL COMMENT '会话业务ID（UUID，对外暴露，多轮续接/回放依据）',
+    tenant_id             BIGINT       NOT NULL COMMENT '租户ID（多租户隔离维度）',
+    user_id               BIGINT       NOT NULL COMMENT '用户ID（用户级隔离维度）',
+    kb_id                 BIGINT       DEFAULT NULL COMMENT '关联知识库ID（可空，表示临时问答未绑定知识库）',
+    model_name            VARCHAR(128) DEFAULT NULL COMMENT '本会话使用的对话模型名',
+    title                 VARCHAR(255) DEFAULT NULL COMMENT '会话标题（列表展示，可由首条用户消息截取）',
+    status                TINYINT      NOT NULL DEFAULT 1 COMMENT '状态：1=活跃, 0=已关闭',
+    last_access_time      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最后访问时间（续期/排序依据）',
+    create_time           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    deleted               TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除标记：0=未删除, 1=已删除（查询一律过滤 deleted=0）',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_session_id (session_id),
+    KEY idx_tenant_user (tenant_id, user_id),
+    KEY idx_user_id (user_id),
+    KEY idx_kb_id (kb_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='对话会话表（v5：MySQL 全量持久化 + 逻辑删除）';
+
+-- ==================== 消息表（v5：LLM 对话消息持久化） ====================
+-- 会话与消息 1:N 关联（chat_message.session_id → chat_session.session_id）。
+--   - content 用 LONGTEXT 承载长回答；citations 用 TEXT 存引用 JSON（随 assistant 消息存储，完整可回放）；
+--   - response_time 记录本次回答耗时(ms)，token_count 记录 token 用量（估算可空）；
+--   - 每轮问答写入 user + assistant 两行，查询/回放按 session_id + create_time 升序。
+DROP TABLE IF EXISTS chat_message;
+CREATE TABLE chat_message (
+    id                    BIGINT       NOT NULL AUTO_INCREMENT COMMENT '消息表物理自增主键（MySQL 行身份）',
+    message_id            VARCHAR(36)  NOT NULL COMMENT '消息业务ID（UUID）',
+    session_id            VARCHAR(36)  NOT NULL COMMENT '所属会话ID（FK → chat_session.session_id）',
+    tenant_id             BIGINT       NOT NULL COMMENT '租户ID（多租户隔离维度）',
+    user_id               BIGINT       NOT NULL COMMENT '用户ID（用户级隔离维度）',
+    kb_id                 BIGINT       DEFAULT NULL COMMENT '关联知识库ID（可空）',
+    role                  VARCHAR(32)  NOT NULL COMMENT '消息角色：USER/ASSISTANT/SYSTEM',
+    content               LONGTEXT     NOT NULL COMMENT '消息文本内容',
+    model_name            VARCHAR(128) DEFAULT NULL COMMENT '生成该消息使用的对话模型名',
+    message_type          VARCHAR(32)  DEFAULT NULL COMMENT '消息类型（预留，如 TEXT/RAG 等）',
+    citations             TEXT         DEFAULT NULL COMMENT '引用溯源列表 JSON（assistant 消息携带，USER 消息为 NULL）',
+    response_time         BIGINT       DEFAULT NULL COMMENT '本次回答耗时（毫秒）',
+    token_count           INT          DEFAULT NULL COMMENT '本次回答 token 用量（估算，可空）',
+    create_time           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '消息时间（用于按序回放与排序）',
+    deleted               TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除标记：0=未删除, 1=已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_message_id (message_id),
+    KEY idx_session_id (session_id),
+    KEY idx_tenant_user (tenant_id, user_id),
+    KEY idx_session_create (session_id, create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='对话消息表（v5：会话-消息 1:N，引用 JSON 随消息可回放）';
+
+-- ==================== v5 核心变更说明 ====================
+-- 8. 【LLM 对话消息持久化（会话-消息双表）】
+--    新增 chat_session / chat_message 两表，配合 Redis 实时上下文实现双存储：
+--      - 会话/消息全量写入 MySQL，进程重启不丢失、可完整回放；
+--      - Redis 仅作实时上下文缓存（TTL），丢失时由 MySQL 按 sessionId 重建；
+--      - 每轮问答统一写 user+assistant 两行消息（同事务）；
+--      - 清空会话 = 会话及其下消息逻辑删除(deleted=1) + 清除 Redis；
+--      - 查询一律 AND deleted = 0，保证逻辑删除后不残留。
+-- ============================================================================

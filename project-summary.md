@@ -1,6 +1,6 @@
-# RAG Vector Tool — 项目技术总结
+# RAG Vector Tool（NebulaKB）— 项目技术总结
 
-> **生成时间**：2026-08-18
+> **生成时间**：2026-09-04
 > **项目版本**：0.0.1-SNAPSHOT
 > **License**：MIT
 
@@ -105,7 +105,8 @@ rag-vector-tool (父 POM)
 
 - **部署方式**：单服务 JAR 包启动（`java -jar` 或 `spring-boot:run`），非 K8s/容器化
 - **多租户**：**已开启** —— 租户-用户-角色三级模型，Weaviate 集合名 `T{tenantId}_Kb{kbId}` 物理隔离
-- 权限体系：JWT Token 认证 + RBAC（4 级角色），登录锁定（5 次失败锁 30 分钟）
+- **两级权限隔离**：平台超级用户 SUPER_ADMIN（`tenant_id=0`，全租户最高权限）+ 租户级 RBAC（TENANT_ADMIN / KB_ADMIN / CONTRIBUTOR / VIEWER），登录锁定（5 次失败锁 30 分钟）
+- **Web 管理控制台**：`rag-frontend`（React 18 + TypeScript 5.7 + Vite + Tailwind 3.4 + 自研基础 UI 组件），对接真实后端，可切换 Mock 模式独立开发
 - 向量库装配：VectorStoreConfig 支持按 provider 创建 Weaviate/Milvus 向量库（当前使用 Weaviate）
 
 ### 2.5 AI 模型统一管理框架（AiModelFactory）
@@ -131,6 +132,15 @@ rag-vector-tool (父 POM)
 **配置体系**：模型统一声明于 spring.ai.platform.models（application.public.yml，经 spring.config.import 引入），由 AiModelProperties 绑定。每个模型含 category（CHAT/EMBEDDING/OCR/RERANK/ASR/WORKFLOW/AGENT/RAG）+ protocol（OPENAI/OLLAMA/DASHSCOPE）+ baseUrl/apiKey/modelName + 生成参数（temperature/maxTokens/topP/streamEnabled 等）+ extensions 扩展参数。修改 YAML 的 protocol 字段即可切换协议，无需改代码。
 
 **统一 HTTP 客户端**：OpenAiClient（rag-common/client）封装 embed / rerank / ocr 三类 OpenAI 兼容端点调用，共享 OkHttp 连接池与 Bearer 鉴权；Rerank 内置令牌桶限流 + 分批处理。
+
+**场景化温度控制（同模型不同场景不同温度）**：
+- `ModelAdapter.createChatModel` 已参数化 `temperature` 与 `maxTokens`（非硬编码），新增抽象方法 `createSceneChatOptions(Double temperature)` 构造"仅含温度"的请求级场景 Options。
+- `AiModelFactory` 新增 `resolveSceneTemperature(model, scene)` 与 `resolveSceneChatOptions(model, scene)`：解析优先级 `scene-temperatures.get(scene)` > 模型级 `temperature` > null。
+- `ChatScene` 枚举（rag-common/enums）标识调用场景：`CLASSIFY`（问题分类/二分类）/ `REWRITE`（查询改写）/ `RAG_QA`（知识库问答）/ `CHAT_QA`（通用问答）；温度不固化在枚举内，由 YAML 场景温度表决定。
+- 温度通过**请求级 `ChatOptions`（随 `Prompt` 携带）**覆盖模型 `defaultOptions`，不污染单例缓存中的模型默认温度；请求级 Options 与 defaultOptions 合并时请求级优先，向后兼容。
+- 配置收敛为两层（均在模型 YAML 段）：`scene-temperatures`（按场景差异化，最优先）+ `temperature`（模型级默认兜底）。
+
+**生成参数独立贯通**：`maxTokens` 作为独立参数由接口 → 工厂 → 三适配器贯通，取代 OpenAi 硬编码 4096 / Ollama / DashScope 默认值；`OpenAiModelAdapter` 在 null 时兜底 4096。
 
 ---
 
@@ -239,6 +249,9 @@ rag-vector-tool (父 POM)
 | 白名单过滤 | multi-search 支持按 docId 白名单后过滤（粗排之后、去重之前） |
 | 相似度阈值 | SimilarityFilter 按 score 过滤（默认 0.5，可配置），过滤后为空触发无答案降级 |
 | 去重 | 入库时按 textHash 去重（existsByTextHash）；检索期跨库去重（三级 key：docId+chunkId → recordId → docId+textHash） |
+| Embedding 请求节流 | WeaviateVectorStoreAdapter 对逐分片 embedding 请求做节流（默认 150ms 间隔），避免密集请求触发硅基流动 Connection reset/限流 |
+
+**引用溯源相关度**：`WeaviateVectorStoreAdapter.parseSearchResult` 将 score 同时写入 Document.metadata（除 builder.score 外），使上层 `getDoubleMeta` 能读回真实相似度；前端 `Citation` 支持展示文档名 + chunkId（#短标识）+ 相似度百分比。
 
 ---
 
@@ -269,7 +282,8 @@ Chat 模块承载**对话交互核心能力**，遵循三层架构设计：
 | SafetyChecker | `rag-chat/safety/` | 输入输出安全校验，提示词注入防护 |
 | TempDocumentService | `rag-chat/document/` | 临时文档解析、向量化、内存召回 |
 | SimilarityFilter | `rag-config/retrieval/` | 相似度阈值过滤，统一覆盖单库/多库/临时文档三类场景 |
-| ChatProperties | `rag-chat/config/` | 全局 Chat 配置（开关、模型、Token 预算、TTL、阈值、提示词模板） |
+| GenericQueryClassifier | `rag-chat/classifier/` | 检索前置通用问题二分类拦截（判定闲聊/常识/实时信息类 → 跳过 RAG 走纯对话） |
+| ChatProperties | `rag-chat/config/` | 全局 Chat 配置（开关、模型、Token 预算、TTL、阈值、提示词模板、preQueryFilter 拦截配置） |
 
 ### 5.3 四种对话场景
 
@@ -283,21 +297,26 @@ Chat 模块承载**对话交互核心能力**，遵循三层架构设计：
 ### 5.4 问答路由流程
 
 ```
-ChatController
+ChatController（chat / chatStream 读取 request.toSearchConfig() 透传检索模式 searchMode/topK 等）
   → ChatMessageService.chat() / .chatStream()
     → ChatSessionService.getOrCreateSession()
+    → GenericQueryClassifier.shouldIntercept()  ← 检索前置通用问题二分类（kbId!=null 且开拦截开关时）
+        ├─ 命中通用 → 专属提示词纯对话回答（空引用 + 前置标注，跳过检索），仅响应不检索
+        └─ 未命中/失败 → 自动放行进入 RAG 链路
     → ChatContextService.prepareContext()
         → SafetyChecker.checkInput()          ← 输入安全校验
-        → LlmQueryRewriter.rewrite()          ← 查询改写
-        → RagQueryService.searchDocuments()   ← 知识库检索
+        → LlmQueryRewriter.rewrite()          ← 查询改写（ChatScene.REWRITE）
+        → RagQueryService.searchDocuments()   ← 知识库检索（按 searchConfig 选择 VECTOR/BM25/HYBRID）
         → TempDocumentService.recallFromTemp() ← 临时文档召回
         → SimilarityFilter.filter()           ← 相似度阈值过滤
         → ContextAssembler.assemble()         ← 上下文组装
     → PromptTemplateResolver.resolve()        ← 场景感知 Prompt 选择
-    → ChatGenerator.generate() / .generateStream()
+    → ChatGenerator.generate() / .generateStream()  ← 按场景（RAG_QA/CHAT_QA）携带请求级温度 Options
     → SafetyChecker.checkOutput()             ← 输出安全校验
-    → SessionStore.save()                     ← 会话持久化（user + assistant）
+    → SessionStore.save()                     ← 会话持久化（user + assistant，流式在 done 后持久化完整回答）
 ```
+
+**检索模式全链路透传**：前端 `rag.ts` 透传 `searchMode/topK` → `ChatRequest.toSearchConfig()`（非法回退 VECTOR_ONLY）→ `ChatContextService.prepareContext(searchConfig, topK)`，不再硬编码 VECTOR_ONLY；未传参数时内部回退 VECTOR_ONLY，兼容旧客户端。
 
 ### 5.5 配置体系
 
@@ -320,6 +339,13 @@ ChatController
 | similarityThreshold | 0.5 | 相似度阈值（过滤低分片段） |
 | ragSystemPrompt | (内置默认) | RAG 场景系统提示词模板 |
 | chatSystemPrompt | (无) | 普通对话系统提示词 |
+| preQueryFilterEnabled | false | 检索前置通用问题二分类拦截全局开关（kbId!=null 的知识库/混合问答触发） |
+| preQueryFilterModel | (空→chatModel) | 拦截分类所用模型 |
+| preQueryFilterPrompt / answerPrompt | (内置/专属) | 分类指令（含 `{query}`）与拦截回答专属提示词（强调实时信息以官方为准） |
+| preQueryFilterTag | 通用知识标注 | 拦截回答前置标注文案 |
+| preQueryFilterTimeoutMs | 5000 | 分类调用超时（超时自动放行 RAG） |
+
+> 注：`pre-query-filter` 系列在 YAML 中采用**平铺 kebab-case 字段**（`pre-query-filter-enabled` 等），与 ChatProperties 平铺字段对应；嵌套段结构无法绑定到平铺字段（绑定根因修复记录见 work-log）。
 
 ### 5.6 异常降级规则
 
@@ -352,29 +378,37 @@ ChatController
 | 逻辑隔离 | MySQL 中 `knowledge_base.tenant_id` + 权限校验 |
 | 数据访问 | 所有 API 操作前校验用户对该 kbId 的权限 |
 
-### 6.2 用户权限模型
+### 6.2 用户权限模型（两级权限隔离）
 
-**三级模型**：租户（Tenant）→ 用户（User）→ 角色（Role）
+**两级权限体系**：平台超级用户层（SUPER_ADMIN）+ 租户 RBAC 层。
 
-**4 级角色**：
+**角色清单**（`roleLevel`：SUPER_ADMIN=0 > TENANT_ADMIN=1 > KB_ADMIN=2 > CONTRIBUTOR=3 > VIEWER=4）：
 
 | 角色 | 编码 | 权限范围 |
 |------|------|---------|
-| 租户管理员 | `TENANT_ADMIN` | 本租户所有 KB 完全控制（不受 kb_role_permission 限制） |
+| 平台超级用户 | `SUPER_ADMIN` | 全局最高权限，不属于任何租户实体（`user_tenant_role` 以 `tenant_id=0` 表示"全租户"），可创建/删除所有租户、管理全平台用户角色分配、查看所有租户配置与数据；是唯一允许创建租户的角色 |
+| 租户管理员 | `TENANT_ADMIN` | 本租户所有 KB 完全控制（不受 kb_role_permission 限制），数据范围隔离（仅本租户数据），不可见/不可任命高于自身权限的角色 |
 | 知识库管理员 | `KB_ADMIN` | 仅 kb_role_permission 含该角色的 KB 可配置/管理成员 |
 | 编辑者 | `CONTRIBUTOR` | 仅含该角色的 KB 可上传/查看 |
 | 查看者 | `VIEWER` | 仅含该角色的 KB 可查看/检索 |
 
 **权限判定逻辑**（`KbAccessService.resolveKbRole`）：
-1. 查询 `user_tenant_role` 获取用户在租户中的角色
-2. 若为 `TENANT_ADMIN` → 直接拥有该租户全部 KB 权限
-3. 否则查 `kb_role_permission` 表，看该 KB 是否授予了用户角色
-4. 命中则返回角色，未命中返回 `NONE`（无权限）
+1. 短路放行：`isSuperAdmin(userId)`（查 `tenant_id=0` 绑定）→ 拥有全平台权限
+2. 查询 `user_tenant_role` 获取用户在租户中的角色
+3. 若为 `TENANT_ADMIN` → 直接拥有该租户全部 KB 权限
+4. 否则查 `kb_role_permission` 表，看该 KB 是否授予了用户角色
+5. 命中则返回角色，未命中返回 `NONE`（无权限）
+
+**设计约定**：
+- 超级用户身份记录在 `user_tenant_role`（`tenant_id=0 + SUPER_ADMIN`）；`admin` 默认账号初始化为超级用户，不绑定具体租户
+- `/auth/me` 对超级用户返回 `tenantId=0`，前端以 `tenantId==0` 判断超级用户视图（不额外加布尔字段）
+- 数据模型为一用户一租户一角色（`user_tenant_role` 按 user+tenant 唯一约束）；创建用户由 `AdminController.createUser` 联动写入租户角色绑定
 
 **认证机制**：
 - JWT Token（自研 `JwtTokenProvider`）：accessToken 2h + refreshToken 7d
 - 登录锁定：连续 5 次失败 → 锁 30 分钟
 - JWT 拦截器：除 `/api/auth/**` 外全部路径需 Token
+- Spring Security 无状态（SecurityConfig + JwtAuthenticationFilter），与 JwtAuthInterceptor 双重保障
 
 ### 6.3 知识库操作
 
@@ -393,6 +427,7 @@ ChatController
 | 检索 | `POST /api/rag/search` | VIEWER+ |
 | 多库检索 | `POST /api/rag/multi-search` | 每个 kbId 均需 VIEWER+，任一失败阻断整个请求 |
 | 文档列表 | `GET /api/rag/documents` | VIEWER+ |
+| 单文档删除 | `DELETE /api/rag/documents/{docId}` | 上传者本人或 KB_ADMIN / TENANT_ADMIN（物理删除三表业务数据 + 按 vector_id 精确删向量） |
 
 **版本管理**：
 - 语义化版本号：`INITIAL` / `MAJOR` / `MINOR` / `PATCH`
@@ -427,25 +462,27 @@ ChatController
 | POST | `/api/rag/search` | 多模式检索（kbId/query/topK 必填；可选 searchMode/rrfK/vectorWeight/bm25Weight/rerank/rerankMultiplier） |
 | POST | `/api/rag/multi-search` | 多知识库联合检索 + 白名单过滤（kbIds/query/topK/whitelist/expandFactor/searchMode/rerank/rerankMultiplier/enableParentEnhancement） |
 | GET | `/api/rag/documents?kbId=` | 查看知识库文档列表 |
+| DELETE | `/api/rag/documents/{docId}` | 单文档删除（物理删除三表 + 精确删向量） |
 
 **问答接口**（需 Token）：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/rag/chat` | 同步问答（multipart/form-data，支持 kbId + query + files + sessionId + model） |
-| POST | `/api/rag/chat/stream` | 流式问答 SSE（text/event-stream，事件类型：citations / content / done / error） |
+| POST | `/api/rag/chat` | 同步问答（multipart/form-data，支持 kbId + query + files + sessionId + model + searchMode/topK 等检索参数） |
+| POST | `/api/rag/chat/stream` | 流式问答 SSE（text/event-stream，事件类型：citations / content / done / error，done 携带完整回答持久化） |
 
-**管理接口**（需 Token + 租户管理员/KB 管理员）：
+**管理接口**（需 Token + 平台超级用户 / 租户管理员 / KB 管理员，两级权限隔离）：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/admin/tenant` | 创建租户 |
-| GET | `/api/admin/tenant/list` | 列出当前用户的租户 |
-| POST | `/api/admin/tenant/{tenantId}/members` | 任命租户角色 |
-| POST | `/api/admin/user` | 创建用户 |
-| GET | `/api/admin/role/list` | 查看角色列表 |
-| POST | `/api/admin/kb` | 创建知识库 |
-| GET | `/api/admin/kb/list` | 知识库列表 |
+| POST | `/api/admin/tenant` | 创建租户（**仅 SUPER_ADMIN**，super admin 不再自动授予 TENANT_ADMIN） |
+| GET | `/api/admin/tenant/list` | 列出当前用户的租户（SUPER_ADMIN 全量；TENANT_ADMIN 仅本租户） |
+| POST | `/api/admin/tenant/{tenantId}/members` | 任命租户角色（含 GRANT/REVOKE） |
+| POST | `/api/admin/user` | 创建用户（联动写入 user_tenant_role） |
+| GET | `/api/admin/user` | 用户列表（返回 userId/username/tenantId/tenantName/roleCodes） |
+| GET | `/api/admin/role/list` | 查看角色列表（TENANT_ADMIN 视角过滤掉 SUPER_ADMIN） |
+| POST | `/api/admin/kb` | 创建知识库（super admin 兜底取首个可用租户） |
+| GET | `/api/admin/kb/list` | 知识库列表（SUPER_ADMIN 全量；TENANT_ADMIN 仅本租户） |
 | GET/PUT | `/api/admin/kb/{kbId}/config` | 查看/更新 KB 配置 |
 | GET/POST/DELETE | `/api/admin/kb/{kbId}/permissions` | 管理 KB 角色权限 |
 | POST | `/api/admin/kb/{kbId}/collection/init` | 初始化集合 |
@@ -466,6 +503,14 @@ ChatController
 | 检索结果字段（单库） | fileId, fileName, snippet（分片文本）, score（相似度）, documentVersion, success |
 | 检索结果字段（多库） | chunkId, docId, kbId, fileName, snippet, score, chunkMode, chunkType, parentChunkId, sourcePath |
 
+### 7.3 Web 前端控制台（rag-frontend）
+
+- **技术栈**：React 18.3 + TypeScript 5.7 + Vite 5.4 + Tailwind CSS 3.4 + React Router 6 + Axios；**无第三方组件库**，基础 UI（Button/Card/Modal/Table/Toast/Select/Tabs 等）与图表（Line/Donut/Ring）全部按深色玻璃拟态设计系统自研。
+- **页面**：登录/注册、概览仪表盘、智能问答（流式 + 引用溯源 + 多轮会话）、知识库管理、文档管理（上传/删除/重建）、租户管理、用户管理、角色权限（含 SUPER_ADMIN 两级权限视图）。
+- **设计系统**：背景 `#070b15`、玻璃卡片（backdrop-blur）、accent 主渐变 `linear-gradient(135deg,#22d3ee,#a855f7)`。
+- **Mock 模式**：内置完整 Mock 数据层（`src/lib/api/mock`），`VITE_USE_MOCK` 开关可独立运行；默认对接真实后端（Vite 代理 `/api` → localhost:8080），含 `adapter.ts` 后端实体→前端类型统一映射层。
+- **对接状态**：认证/列表/上传/检索/问答/权限管理均与真实后端端到端打通；JWT 自动注入与 401 自动刷新、SSE 手动分帧解析。
+
 ---
 
 ## 八、现存约束、问题、待优化点
@@ -474,7 +519,7 @@ ChatController
 
 | 类别 | 约束/问题 | 影响 |
 |------|----------|------|
-| 功能缺失 | 父子增强仅候选池内反查父块 | 向量库 parentChunkId（UUID）与 doc_chunk 表自增 ID 非同一体系，无法跨表反查父块原文 |
+| 待验证 | 父子增强 MySQL 跨表反查 | v4 已统一 doc_chunk.chunk_id 为 UUID 业务键，与向量 metadata chunkId 一致，理论上可通过 `findByChunkId` 跨表反查父块；跨表增强逻辑仍待落地 |
 | 待迁移 | rag.embedding（vectorDim）与 rag.deepseek-ocr 旧配置保留 | 后续迁移到 spring.ai.platform.models.extensions 统一管理 |
 | 待迁移 | DashScope 适配器依赖 spring-ai-alibaba（非官方 starter） | 版本已与 Spring AI 1.0.0 对齐，需关注后续兼容性 |
 | 性能 | 单服务部署，无分布式向量检索 | 大规模知识库场景性能受限 |
@@ -483,3 +528,9 @@ ChatController
 | 稳定性 | DeepSeek-OCR 依赖硅基流动付费 API | 402 错误（账户余额不足）会导致 OCR 失败 |
 | 稳定性 | 模型实例缓存无过期策略 | 模型配置变更后需重启 |
 | 稳定性 | 临时文档处理为同步阻塞 | 大文件会拖慢首字延迟（TTFT） |
+| 稳定性 | Embedding 限流 | 硅基流动 /embeddings 密集请求会 Connection reset；已内置 150ms 节流（以时间换稳定） |
+| 数据模型 | 一用户一租户一角色 | user_tenant_role 按 user+tenant 唯一约束，前端角色选择为单选 |
+
+**近期遗留事项**（详见 work-log）：
+- 已实现的 `doc_chunk` 命名语义统一（主键 `doc_chunk_id` 与业务键 `chunk_id` 分离，parent_chunk_id 存父块 UUID）：**存量库需执行 schema-v2.sql 内附 ALTER 迁移**，重启后端后新入库分片才写入 chunk_id/chunk_type/parent_chunk_id；已入库旧 hierarchical 数据 parent_chunk_id 仍为空，需重建文档。
+- 场景化温度、preQueryFilter、maxTokens 等均为后端代码 + 配置改动，需**重启后端**生效；preQueryFilter 全局开关默认 false。

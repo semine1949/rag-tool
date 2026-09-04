@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.rag.auth.mapper.chat.ChatMessageMapper">
+
+    <resultMap id="ChatMessageResultMap" type="com.rag.common.entity.ChatMessageEntity">
+        <id property="id" column="id"/>
+        <result property="messageId" column="message_id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="kbId" column="kb_id"/>
+        <result property="role" column="role"/>
+        <result property="content" column="content"/>
+        <result property="modelName" column="model_name"/>
+        <result property="messageType" column="message_type"/>
+        <result property="citations" column="citations"/>
+        <result property="responseTime" column="response_time"/>
+        <result property="tokenCount" column="token_count"/>
+        <result property="createTime" column="create_time"/>
+        <result property="deleted" column="deleted"/>
+    </resultMap>
+
+    <sql id="baseColumns">
+        id, message_id, session_id, tenant_id, user_id, kb_id, role, content,
+        model_name, message_type, citations, response_time, token_count, create_time, deleted
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO chat_message (message_id, session_id, tenant_id, user_id, kb_id, role, content,
+                                  model_name, message_type, citations, response_time, token_count, create_time, deleted)
+        VALUES (#{messageId}, #{sessionId}, #{tenantId}, #{userId}, #{kbId}, #{role}, #{content},
+                #{modelName}, #{messageType}, #{citations}, #{responseTime}, #{tokenCount}, #{createTime}, #{deleted})
+    </insert>
+
+    <insert id="batchInsert">
+        INSERT INTO chat_message (message_id, session_id, tenant_id, user_id, kb_id, role, content,
+                                  model_name, message_type, citations, response_time, token_count, create_time, deleted)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.messageId}, #{item.sessionId}, #{item.tenantId}, #{item.userId}, #{item.kbId}, #{item.role}, #{item.content},
+             #{item.modelName}, #{item.messageType}, #{item.citations}, #{item.responseTime}, #{item.tokenCount}, #{item.createTime}, #{item.deleted})
+        </foreach>
+    </insert>
+
+    <select id="listBySessionId" resultMap="ChatMessageResultMap">
+        SELECT <include refid="baseColumns"/>
+        FROM chat_message
+        WHERE session_id = #{sessionId} AND deleted = 0
+        ORDER BY create_time ASC, id ASC
+    </select>
+
+    <update id="logicDeleteBySessionId">
+        UPDATE chat_message
+        SET deleted = 1
+        WHERE session_id = #{sessionId} AND deleted = 0
+    </update>
+
+</mapper>

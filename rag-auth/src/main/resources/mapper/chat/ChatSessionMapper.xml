@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.rag.auth.mapper.chat.ChatSessionMapper">
+
+    <resultMap id="ChatSessionResultMap" type="com.rag.common.entity.ChatSessionEntity">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="kbId" column="kb_id"/>
+        <result property="modelName" column="model_name"/>
+        <result property="title" column="title"/>
+        <result property="status" column="status"/>
+        <result property="lastAccessTime" column="last_access_time"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="deleted" column="deleted"/>
+    </resultMap>
+
+    <!-- 可复用列清单（保持与 resultMap 一致） -->
+    <sql id="baseColumns">
+        id, session_id, tenant_id, user_id, kb_id, model_name, title,
+        status, last_access_time, create_time, update_time, deleted
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO chat_session (session_id, tenant_id, user_id, kb_id, model_name, title,
+                                  status, last_access_time, create_time, deleted)
+        VALUES (#{sessionId}, #{tenantId}, #{userId}, #{kbId}, #{modelName}, #{title},
+                #{status}, #{lastAccessTime}, #{createTime}, #{deleted})
+    </insert>
+
+    <select id="findBySessionId" resultMap="ChatSessionResultMap">
+        SELECT <include refid="baseColumns"/>
+        FROM chat_session
+        WHERE session_id = #{sessionId} AND deleted = 0
+    </select>
+
+    <select id="listByTenantUser" resultMap="ChatSessionResultMap">
+        SELECT <include refid="baseColumns"/>
+        FROM chat_session
+        WHERE tenant_id = #{tenantId} AND user_id = #{userId} AND deleted = 0
+        ORDER BY last_access_time DESC
+    </select>
+
+    <select id="listByUserOnly" resultMap="ChatSessionResultMap">
+        SELECT <include refid="baseColumns"/>
+        FROM chat_session
+        WHERE user_id = #{userId} AND deleted = 0
+        ORDER BY last_access_time DESC
+    </select>
+
+    <update id="updateByIdempotent">
+        UPDATE chat_session
+        <set>
+            <if test="title != null">title = #{title},</if>
+            <if test="modelName != null">model_name = #{modelName},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="lastAccessTime != null">last_access_time = #{lastAccessTime},</if>
+            update_time = CURRENT_TIMESTAMP
+        </set>
+        WHERE session_id = #{sessionId} AND deleted = 0
+    </update>
+
+    <update id="logicDeleteBySessionId">
+        UPDATE chat_session
+        SET deleted = 1, update_time = CURRENT_TIMESTAMP
+        WHERE session_id = #{sessionId} AND deleted = 0
+    </update>
+
+</mapper>

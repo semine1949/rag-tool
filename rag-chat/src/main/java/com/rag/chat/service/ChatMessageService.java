@@ -12,7 +12,6 @@ import com.rag.common.chat.ChatMessage;
 import com.rag.common.chat.ChatSession;
 import com.rag.common.chat.ChatStreamEvent;
 import com.rag.common.chat.Citation;
-import com.rag.common.chat.SessionStore;
 import com.rag.common.enums.ChatScene;
 import com.rag.common.entity.KbChatConfig;
 import com.rag.common.entity.config.SearchConfig;
@@ -50,7 +49,6 @@ public class ChatMessageService {
     private final ChatContextService contextService;
     private final ChatGenerator chatGenerator;
     private final SafetyChecker safetyChecker;
-    private final SessionStore sessionStore;
     private final ChatProperties chatProperties;
     private final PromptTemplateResolver promptResolver;
     private final GenericQueryClassifier queryClassifier;
@@ -60,7 +58,6 @@ public class ChatMessageService {
                               ChatContextService contextService,
                               ChatGenerator chatGenerator,
                               SafetyChecker safetyChecker,
-                              SessionStore sessionStore,
                               ChatProperties chatProperties,
                               PromptTemplateResolver promptResolver,
                               GenericQueryClassifier queryClassifier,
@@ -69,7 +66,6 @@ public class ChatMessageService {
         this.contextService = contextService;
         this.chatGenerator = chatGenerator;
         this.safetyChecker = safetyChecker;
-        this.sessionStore = sessionStore;
         this.chatProperties = chatProperties;
         this.promptResolver = promptResolver;
         this.queryClassifier = queryClassifier;
@@ -141,12 +137,12 @@ public class ChatMessageService {
             answer = "回答内容包含不安全信息，已被拦截。";
         }
 
-        // ⑥ 会话持久化
+        // ⑥ 会话持久化（MySQL 全量 + Redis 上下文双写：一轮写 user+assistant 两条消息）
+        long elapsed = System.currentTimeMillis() - startTime;
         session.appendMessage(ChatMessage.user(query));
         session.appendMessage(ChatMessage.assistant(answer));
-        sessionStore.save(session, chatProperties.getSessionTtlSeconds());
-
-        long elapsed = System.currentTimeMillis() - startTime;
+        sessionService.saveRound(session, query, answer, serializeCitations(citations),
+                modelName != null ? modelName : chatProperties.getChatModel(), elapsed);
         return ChatAnswer.builder()
                 .answer(answer)
                 .citations(citations)
@@ -217,12 +213,12 @@ public class ChatMessageService {
             answer = "回答内容包含不安全信息，已被拦截。";
         }
 
-        // 会话持久化
+        // 会话持久化（MySQL 全量 + Redis 上下文双写）
+        long elapsed = System.currentTimeMillis() - startTime;
         session.appendMessage(ChatMessage.user(query));
         session.appendMessage(ChatMessage.assistant(answer));
-        sessionStore.save(session, chatProperties.getSessionTtlSeconds());
-
-        long elapsed = System.currentTimeMillis() - startTime;
+        sessionService.saveRound(session, query, answer, "[]",
+                modelName != null ? modelName : chatProperties.getChatModel(), elapsed);
         return ChatAnswer.builder()
                 .answer(answer)
                 .citations(citations)
@@ -298,10 +294,10 @@ public class ChatMessageService {
                     finalSession.appendMessage(ChatMessage.user(finalQuery));
                     // 持久化助手消息（仅当流式完整结束时，异常中断不写入不完整消息）
                     String answer = fullAnswer.get();
-                    if (answer != null && !answer.isBlank()) {
-                        finalSession.appendMessage(ChatMessage.assistant(answer));
-                    }
-                    sessionStore.save(finalSession, chatProperties.getSessionTtlSeconds());
+                    // 统一双写：MySQL 全量 + Redis 上下文（流式无完整回答时 assistant 为空，saveRound 自动跳过落库）
+                    sessionService.saveRound(finalSession, finalQuery,
+                            (answer != null && !answer.isBlank()) ? answer : null,
+                            "[]", modelName != null ? modelName : chatProperties.getChatModel(), null);
                 })
                 .doOnError(e -> {
                     // 流式异常时不写入不完整消息，保留上一轮完整会话状态
@@ -366,7 +362,9 @@ public class ChatMessageService {
             final ChatSession finalSession = session;
             finalSession.appendMessage(ChatMessage.user(query));
             finalSession.appendMessage(ChatMessage.assistant("根据现有资料无法回答该问题。"));
-            sessionStore.save(finalSession, chatProperties.getSessionTtlSeconds());
+            // 统一双写：MySQL 全量 + Redis 上下文（无召回上下文，引用为空）
+            sessionService.saveRound(finalSession, query, "根据现有资料无法回答该问题。",
+                    "[]", modelName != null ? modelName : chatProperties.getChatModel(), null);
             return Flux.concat(
                     Flux.just(ChatStreamEvent.citations("[]")),
                     Flux.just(ChatStreamEvent.content("根据现有资料无法回答该问题。")),
@@ -393,10 +391,10 @@ public class ChatMessageService {
                     finalSession.appendMessage(ChatMessage.user(finalQuery));
                     // 持久化助手消息（仅当流式完整结束时，异常中断不写入不完整消息）
                     String answer = fullAnswer.get();
-                    if (answer != null && !answer.isBlank()) {
-                        finalSession.appendMessage(ChatMessage.assistant(answer));
-                    }
-                    sessionStore.save(finalSession, chatProperties.getSessionTtlSeconds());
+                    // 统一双写：MySQL 全量 + Redis 上下文（引用以 JSON 列随 assistant 消息落库）
+                    sessionService.saveRound(finalSession, finalQuery,
+                            (answer != null && !answer.isBlank()) ? answer : null,
+                            citationsJson, modelName != null ? modelName : chatProperties.getChatModel(), null);
                 })
                 .doOnError(e -> {
                     // 流式异常时不写入不完整消息，保留上一轮完整会话状态
