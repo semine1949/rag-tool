@@ -91,7 +91,7 @@ export interface BackendChatAnswer {
 
 /** 后端 SSE 事件：{type, data}，data 为字符串 */
 export interface BackendStreamEvent {
-  type: 'content' | 'citations' | 'done' | 'error';
+  type: 'content' | 'citations' | 'done' | 'error' | 'session';
   data?: string;
 }
 

@@ -291,6 +291,48 @@ export interface ChatMessage {
   model?: string;
 }
 
+/** 历史会话列表项（对应后端 GET /api/rag/chat/sessions 返回的会话头） */
+export interface ChatSessionItem {
+  /** 会话 ID（UUID），续聊/删除/加载历史的依据 */
+  sessionId: string;
+  /** 会话标题（首条用户消息截取，空则取占位文案） */
+  title: string;
+  /** 关联知识库 ID */
+  kbId?: number | null;
+  /** 会话使用模型名 */
+  modelName?: string | null;
+  /** 会话最后访问时间（展示排序） */
+  updatedAt: string;
+  /** 创建时间 */
+  createdAt: string;
+}
+
+/** 后端历史会话头原始结构（chat_session 行，字段 snake 无关，Java 实体返回 camelCase） */
+export interface BackendChatSession {
+  id: number;
+  sessionId: string;
+  tenantId: number;
+  userId: number;
+  kbId?: number | null;
+  modelName?: string | null;
+  title?: string | null;
+  status?: number;
+  lastAccessTime?: number | string | null;
+  createTime?: number | string | null;
+  updateTime?: number | string | null;
+}
+
+/** 后端历史消息原始结构（chat_message 行还原，citations 已由后端反序列化为对象数组） */
+export interface BackendChatHistoryMessage {
+  role: 'USER' | 'ASSISTANT' | 'SYSTEM' | string;
+  content: string;
+  citations?: Citation[];
+  /** 消息时间（毫秒时间戳） */
+  timestamp?: number | string;
+  modelName?: string | null;
+  responseTime?: number | null;
+}
+
 export interface ChatRequest {
   question: string;
   kbIds: number[];
@@ -319,7 +361,8 @@ export type StreamEvent =
   | { type: 'citations'; citations: Citation[] }
   | { type: 'content'; content: string }
   | { type: 'done' }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'session'; sessionId: string };
 
 export interface SearchRequest {
   query: string;

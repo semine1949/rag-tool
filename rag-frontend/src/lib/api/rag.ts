@@ -1,6 +1,10 @@
 import type {
+  BackendChatHistoryMessage,
+  BackendChatSession,
+  ChatMessage,
   ChatRequest,
   ChatResponse,
+  ChatSessionItem,
   DocumentItem,
   MultiSearchRequest,
   SearchHit,
@@ -229,6 +233,33 @@ export const ragApi = {
   deleteDocument(docId: number): Promise<void> {
     return request.del<void>(`/rag/documents/${docId}`).then(() => undefined);
   },
+
+  /**
+   * 历史会话列表（当前登录用户，来自 MySQL 权威数据，按最后访问时间倒序）。
+   * 对应后端 GET /api/rag/chat/sessions。
+   */
+  async listSessions(): Promise<ChatSessionItem[]> {
+    const list = await request.get<BackendChatSession[]>('/rag/chat/sessions');
+    return (Array.isArray(list) ? list : []).map(toChatSessionItem);
+  },
+
+  /**
+   * 单会话完整历史消息（来自 MySQL 全量消息，引用已反序列化，按时间升序可回放）。
+   * 对应后端 GET /api/rag/chat/sessions/{sessionId}/messages。
+   */
+  async getSessionMessages(sessionId: string): Promise<ChatMessage[]> {
+    const list = await request.get<BackendChatHistoryMessage[]>(
+      `/rag/chat/sessions/${encodeURIComponent(sessionId)}/messages`,
+    );
+    return (Array.isArray(list) ? list : []).map(toChatMessageFromHistory);
+  },
+
+  /**
+   * 清空会话（MySQL 逻辑删除 + 清 Redis）。对应后端 DELETE /api/rag/chat/sessions/{sessionId}。
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    await request.del<void>(`/rag/chat/sessions/${encodeURIComponent(sessionId)}`);
+  },
 };
 
 /** 将前端 ChatRequest 转为后端 ChatRequest JSON（单 kbId + sessionId + 检索参数） */
@@ -268,11 +299,48 @@ function parseStreamLine(line: string): StreamEvent | null {
       return { type: 'content', content: evt.data ?? '' };
     case 'done':
       return { type: 'done' };
+    case 'session':
+      return { type: 'session', sessionId: evt.data ?? '' };
     case 'error':
       return { type: 'error', message: evt.data ?? '生成失败' };
     default:
       return null;
   }
+}
+
+/** 后端会话时间（epoch ms 或 ISO 字符串）安全转 ISO 字符串 */
+function toIso(t?: number | string | null): string {
+  if (t === undefined || t === null || t === '') return '';
+  const num = typeof t === 'number' ? t : Number(t);
+  if (!Number.isNaN(num) && num > 0) return new Date(num).toISOString();
+  return String(t);
+}
+
+/** 将后端会话头映射为前端会话列表项 */
+function toChatSessionItem(s: BackendChatSession): ChatSessionItem {
+  return {
+    sessionId: s.sessionId,
+    title: s.title?.trim() || '新会话',
+    kbId: s.kbId ?? null,
+    modelName: s.modelName ?? null,
+    createdAt: toIso(s.createTime),
+    updatedAt: toIso(s.lastAccessTime ?? s.updateTime ?? s.createTime),
+  };
+}
+
+/** 将后端历史消息还原为前端气泡消息（统一 id/角色/时间戳） */
+function toChatMessageFromHistory(m: BackendChatHistoryMessage, idx: number): ChatMessage {
+  const ts = toIso(m.timestamp);
+  const role = m.role?.toUpperCase() === 'USER' ? 'user' : 'assistant';
+  return {
+    // 用时间戳 + 序号保证 id 稳定唯一（会话回放/流式更新依赖 id）
+    id: `h-${m.timestamp ?? idx}-${idx}`,
+    role,
+    content: m.content ?? '',
+    citations: Array.isArray(m.citations) && m.citations.length ? m.citations : undefined,
+    createdAt: ts || new Date().toISOString(),
+    model: m.modelName ?? undefined,
+  };
 }
 
 /** 将后端上传结果转为前端文档行 */

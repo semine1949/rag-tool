@@ -338,7 +338,8 @@ public class ChatMessageService {
         // ②.5 检索前置分类拦截（仅知识库问答/混合问答场景生效：preQueryFilterEnabled && kbId != null）
         boolean isRag = kbId != null || (files != null && !files.isEmpty());
         if (shouldInterceptGenericQuery(kbId, query)) {
-            return handleGenericQueryStream(query, session, modelName);
+            return withSessionStart(session.getSessionId(),
+                    handleGenericQueryStream(query, session, modelName));
         }
 
         // ③ 上下文准备
@@ -346,7 +347,8 @@ public class ChatMessageService {
         try {
             prepared = contextService.prepareContext(query, kbId, session, files, searchConfig, topK);
         } catch (RagException e) {
-            return Flux.just(ChatStreamEvent.error(e.getMessage()));
+            return withSessionStart(session.getSessionId(),
+                    Flux.just(ChatStreamEvent.error(e.getMessage())));
         }
 
         String contextText = prepared.assembledContext().getContextText();
@@ -365,10 +367,10 @@ public class ChatMessageService {
             // 统一双写：MySQL 全量 + Redis 上下文（无召回上下文，引用为空）
             sessionService.saveRound(finalSession, query, "根据现有资料无法回答该问题。",
                     "[]", modelName != null ? modelName : chatProperties.getChatModel(), null);
-            return Flux.concat(
+            return withSessionStart(session.getSessionId(), Flux.concat(
                     Flux.just(ChatStreamEvent.citations("[]")),
                     Flux.just(ChatStreamEvent.content("根据现有资料无法回答该问题。")),
-                    Flux.just(ChatStreamEvent.done("根据现有资料无法回答该问题。")));
+                    Flux.just(ChatStreamEvent.done("根据现有资料无法回答该问题。"))));
         }
 
         String citationsJson = serializeCitations(citations);
@@ -379,7 +381,8 @@ public class ChatMessageService {
 
         // 按场景设置温度：知识库问答（isRag）用 RAG_QA，通用问答用 CHAT_QA
         ChatScene qaScene = isRag ? ChatScene.RAG_QA : ChatScene.CHAT_QA;
-        return chatGenerator.generateStream(query, contextText, citationsJson, systemPrompt, modelName, qaScene)
+        return withSessionStart(session.getSessionId(),
+                chatGenerator.generateStream(query, contextText, citationsJson, systemPrompt, modelName, qaScene)
                 .doOnNext(event -> {
                     // 捕获 done 事件中的完整回答
                     if (ChatStreamEvent.TYPE_DONE.equals(event.getType())) {
@@ -399,7 +402,22 @@ public class ChatMessageService {
                 .doOnError(e -> {
                     // 流式异常时不写入不完整消息，保留上一轮完整会话状态
                     log.error("流式问答异常，会话状态未变更 sessionId={}", session.getSessionId(), e);
-                });
+                }));
+    }
+
+    /**
+     * 在流式回答起始处拼接会话标识事件。
+     * <p>
+     * v5：服务端新建会话（客户端未携带 sessionId）时，前端需通过 {@link ChatStreamEvent#TYPE_SESSION}
+     * 拿到本次会话 ID，从而持久化到 localStorage 以便刷新/重登后恢复历史与续聊。
+     * </p>
+     *
+     * @param sessionId 会话 ID
+     * @param flux      后续事件流
+     * @return 前插 session 事件后的完整事件流
+     */
+    private Flux<ChatStreamEvent> withSessionStart(String sessionId, Flux<ChatStreamEvent> flux) {
+        return Flux.concat(Flux.just(ChatStreamEvent.session(sessionId)), flux);
     }
 
     /**

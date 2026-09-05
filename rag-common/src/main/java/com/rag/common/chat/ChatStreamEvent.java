@@ -38,6 +38,9 @@ public class ChatStreamEvent {
     /** 错误事件 */
     public static final String TYPE_ERROR = "error";
 
+    /** 会话标识事件（v5 新增：流式开始时推送当前 sessionId，供前端持久化续聊/恢复历史） */
+    public static final String TYPE_SESSION = "session";
+
     /** 事件类型 */
     private String type;
 
@@ -72,6 +75,20 @@ public class ChatStreamEvent {
      */
     public static ChatStreamEvent done(String fullAnswer) {
         return ChatStreamEvent.builder().type(TYPE_DONE).data(fullAnswer).build();
+    }
+
+    /**
+     * 构造会话标识事件（v5 新增）。
+     * <p>
+     * 在流式回答起始处推送当前会话 ID。对于服务端新建的会话（客户端未携带 sessionId 续接时），
+     * 前端依赖本事件得知本次会话的 ID，从而持久化到 localStorage，实现刷新/重登后恢复历史与续聊。
+     * </p>
+     *
+     * @param sessionId 会话 ID
+     * @return 事件实例
+     */
+    public static ChatStreamEvent session(String sessionId) {
+        return ChatStreamEvent.builder().type(TYPE_SESSION).data(sessionId).build();
     }
 
     /**

@@ -19,6 +19,7 @@ import { adminApi, ragApi } from '@/lib/api';
 import { RETRIEVAL_MODE_META } from '@/lib/rbac';
 import type {
   ChatMessage,
+  ChatSessionItem,
   KnowledgeBase,
   ModelOption,
   RetrievalMode,
@@ -33,6 +34,9 @@ const SUGGESTIONS = [
   '平台的权限体系是怎样设计的？',
   '文档上传失败通常是什么原因？',
 ];
+
+/** 活动会话持久化 key（按用户隔离，避免不同用户串会话） */
+const activeSessionStorageKey = (userId: number) => `rag.chat.active.${userId}`;
 
 /**
  * 智能问答页
@@ -56,11 +60,14 @@ export function ChatPage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
 
+  /** 历史会话列表（来自 MySQL 权威数据） */
+  const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
+  /** 当前活动会话 ID（续聊/恢复历史依据，持久化到 localStorage 以跨刷新/重登保留） */
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
   /** 当前流式请求的取消函数 */
   const cancelRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  /** 多轮会话 ID（真实后端续接上下文用） */
-  const sessionIdRef = useRef<string | null>(null);
 
   // 加载知识库与模型列表
   useEffect(() => {
@@ -75,6 +82,123 @@ export function ChatPage() {
       .catch((e: Error) => toast.error(e.message || '加载配置失败'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * 持久化活动会话：会话/消息已全量落 MySQL，刷新、重登后据此恢复历史。
+   */
+  const persistActiveSession = (sid: string | null) => {
+    const key = activeSessionStorageKey(user?.id ?? 0);
+    if (sid) {
+      localStorage.setItem(key, sid);
+    } else {
+      localStorage.removeItem(key);
+    }
+  };
+
+  /** 拉取当前用户的历史会话列表（不阻断主流程，失败静默）。 */
+  const refreshSessions = async () => {
+    try {
+      const list = await ragApi.listSessions();
+      setSessions(list);
+    } catch {
+      // 历史会话加载失败不打扰用户（后端可能尚未建表/重启中）
+    }
+  };
+
+  /**
+   * 打开指定会话：加载其历史消息回放，并置为当前活动会话（可继续提问）。
+   */
+  const openSession = async (sid: string) => {
+    try {
+      setMessages([]);
+      setActiveSessionId(sid);
+      persistActiveSession(sid);
+      const history = await ragApi.getSessionMessages(sid);
+      if (history.length) setMessages(history);
+    } catch {
+      // 该会话可能已被删除/无权访问，清空活动态
+      setActiveSessionId(null);
+      persistActiveSession(null);
+    }
+  };
+
+  /** 新建会话：清空当前对话与活动会话，后续提问将创建新会话。 */
+  const startNewSession = () => {
+    cancelRef.current?.();
+    cancelRef.current = null;
+    setSending(false);
+    setMessages([]);
+    setActiveSessionId(null);
+    persistActiveSession(null);
+  };
+
+  /**
+   * 清空（删除）当前活动会话：后端逻辑删除 + 清 Redis，再进入新会话。
+   */
+  const clearActiveSession = async () => {
+    const sid = activeSessionId;
+    if (sid) {
+      try {
+        await ragApi.deleteSession(sid);
+        setSessions((prev) => prev.filter((s) => s.sessionId !== sid));
+      } catch {
+        // 删除失败也继续本地清空，避免卡住
+      }
+    }
+    startNewSession();
+  };
+
+  // 挂载/用户变化后：拉取历史会话，并恢复上次活动会话（跨刷新、跨登录保留）
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const key = activeSessionStorageKey(user.id);
+    const stored = localStorage.getItem(key);
+
+    (async () => {
+      let list: ChatSessionItem[] = [];
+      try {
+        list = await ragApi.listSessions();
+      } catch {
+        // ignore
+      }
+      if (cancelled) return;
+      setSessions(list);
+
+      // 优先恢复本地记忆的活动会话（刷新/重登后回到原会话）
+      const target = stored ? list.find((s) => s.sessionId === stored) : undefined;
+      if (target) {
+        setActiveSessionId(target.sessionId);
+        try {
+          const history = await ragApi.getSessionMessages(target.sessionId);
+          if (!cancelled && history.length) setMessages(history);
+        } catch {
+          if (!cancelled) {
+            setActiveSessionId(null);
+            persistActiveSession(null);
+          }
+        }
+        return;
+      }
+      // 无记忆时，若列表非空，自动打开最近一条会话，保证"多次登录历史仍在"
+      if (list.length > 0) {
+        const latest = list[0];
+        setActiveSessionId(latest.sessionId);
+        persistActiveSession(latest.sessionId);
+        try {
+          const history = await ragApi.getSessionMessages(latest.sessionId);
+          if (!cancelled && history.length) setMessages(history);
+        } catch {
+          // ignore
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // 新消息时自动滚动到底部
   useEffect(() => {
@@ -139,16 +263,24 @@ export function ChatPage() {
       topK,
       temperature,
       withHistory,
-      // 多轮会话续接：携带上一轮的 sessionId（真实后端生效）
-      sessionId: withHistory ? sessionIdRef.current ?? undefined : undefined,
+      // 多轮会话续接：携带当前活动会话的 sessionId（刷新/重登后经 localStorage 恢复）
+      sessionId: withHistory ? (activeSessionId ?? undefined) : undefined,
+    };
+
+    /** 记录服务端返回/事件推送的会话 ID，持久化以便刷新/重登后恢复 */
+    const captureSession = (sid: string | null | undefined) => {
+      if (sid) {
+        setActiveSessionId(sid);
+        persistActiveSession(sid);
+      }
     };
 
     // 同步模式：一次性返回完整答案
     if (!streamMode) {
       try {
         const resp = await ragApi.chat(payload);
-        // 记录会话 ID 以便多轮续接
-        if (resp.sessionId) sessionIdRef.current = resp.sessionId;
+        // 记录会话 ID 以便多轮续接 + 刷新/重登后恢复历史
+        captureSession(resp.sessionId);
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
@@ -156,6 +288,8 @@ export function ChatPage() {
               : m,
           ),
         );
+        // 本轮已入库，刷新历史会话列表使新会话出现在列表中
+        void refreshSessions();
       } catch (e) {
         const msg = (e as Error).message || '生成失败';
         setMessages((prev) =>
@@ -170,6 +304,10 @@ export function ChatPage() {
     // 流式模式：逐事件更新消息
     cancelRef.current = ragApi.chatStream(payload, (evt) => {
       switch (evt.type) {
+        case 'session':
+          // 流式起始：拿到会话 ID（新建会话由后端生成），据此持久化以便恢复/续聊
+          captureSession(evt.sessionId);
+          break;
         case 'citations':
           setMessages((prev) =>
             prev.map((m) => (m.id === assistantId ? { ...m, citations: evt.citations } : m)),
@@ -188,6 +326,8 @@ export function ChatPage() {
           );
           setSending(false);
           cancelRef.current = null;
+          // 本轮已入库，刷新历史会话列表
+          void refreshSessions();
           break;
         case 'error':
           setMessages((prev) =>
@@ -208,6 +348,44 @@ export function ChatPage() {
     <div className="grid gap-5 xl:grid-cols-[300px_1fr]">
       {/* 左侧配置面板 */}
       <div className="space-y-5">
+        {/* 历史会话：跨刷新、跨登录保留，点击即可继续问答 */}
+        <Card>
+          <CardHeader
+            title="历史会话"
+            subtitle={`${sessions.length} 个`}
+            action={
+              <button
+                onClick={startNewSession}
+                className="text-[11px] text-accent hover:underline"
+              >
+                ＋ 新建会话
+              </button>
+            }
+          />
+          <div className="no-scrollbar max-h-[220px] space-y-1.5 overflow-y-auto pr-0.5">
+            {sessions.length === 0 ? (
+              <p className="py-5 text-center text-xs text-muted">
+                暂无历史会话，开始对话后自动保存
+              </p>
+            ) : (
+              sessions.map((s) => (
+                <button
+                  key={s.sessionId}
+                  onClick={() => void openSession(s.sessionId)}
+                  title={s.title}
+                  className={`block w-full truncate rounded-lg border px-2.5 py-2 text-left text-xs transition-colors ${
+                    activeSessionId === s.sessionId
+                      ? 'border-accent/50 bg-accent/10 text-text'
+                      : 'border-transparent bg-white/[0.03] text-muted hover:border-line hover:text-text'
+                  }`}
+                >
+                  {s.title}
+                </button>
+              ))
+            )}
+          </div>
+        </Card>
+
         <Card>
           <CardHeader
             title="知识库范围"
@@ -344,7 +522,7 @@ export function ChatPage() {
             </div>
           </div>
           {messages.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setMessages([])}>
+            <Button variant="ghost" size="sm" onClick={() => void clearActiveSession()}>
               清空对话
             </Button>
           )}
