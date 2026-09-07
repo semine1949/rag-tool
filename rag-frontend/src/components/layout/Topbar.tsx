@@ -5,11 +5,14 @@ import {
   IconBell,
   IconLogout,
   IconMenu,
+  IconMoon,
   IconSearch,
+  IconSun,
   IconUser,
 } from '@/components/icons';
 import { useAuth } from '@/features/auth/AuthContext';
 import { ROLE_LABEL, highestRole } from '@/lib/rbac';
+import { useTheme } from '@/lib/theme/ThemeContext';
 import { initials } from '@/lib/utils/format';
 
 export interface TopbarProps {
@@ -21,6 +24,7 @@ export interface TopbarProps {
 /** 顶部栏：面包屑标题 + 搜索 + 通知 + 用户菜单 */
 export function Topbar({ title, subtitle, onMenuClick }: TopbarProps) {
   const { user, logout } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -49,7 +53,7 @@ export function Topbar({ title, subtitle, onMenuClick }: TopbarProps) {
       {/* 移动端菜单按钮 */}
       <button
         onClick={onMenuClick}
-        className="rounded-lg p-2 text-muted transition-colors hover:bg-white/[0.06] hover:text-text lg:hidden"
+        className="rounded-lg p-2 text-muted transition-colors hover:bg-wash/[0.06] hover:text-text lg:hidden"
         aria-label="打开菜单"
       >
         <IconMenu className="h-5 w-5" />
@@ -65,13 +69,23 @@ export function Topbar({ title, subtitle, onMenuClick }: TopbarProps) {
         <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
         <input
           placeholder="搜索知识库、文档…"
-          className="h-9 w-[220px] rounded-xl border border-line bg-black/25 pl-9 pr-3 text-xs text-text placeholder:text-muted-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/15"
+          className="h-9 w-[220px] rounded-[11px] border border-line bg-field pl-9 pr-3 text-xs text-text placeholder:text-muted-2 focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/15"
         />
       </div>
 
+      {/* 主题切换：默认浅色显示月亮图标表示可切到深色；深色显示太阳图标表示可切回浅色 */}
+      <button
+        onClick={toggleTheme}
+        className="rounded-lg p-2 text-muted transition-colors hover:bg-wash/[0.06] hover:text-text"
+        aria-label={isDark ? '切换到浅色主题' : '切换到深色主题'}
+        title={isDark ? '切换为浅色主题' : '切换为深色主题'}
+      >
+        {isDark ? <IconSun className="h-[18px] w-[18px]" /> : <IconMoon className="h-[18px] w-[18px]" />}
+      </button>
+
       {/* 通知 */}
       <button
-        className="relative rounded-lg p-2 text-muted transition-colors hover:bg-white/[0.06] hover:text-text"
+        className="relative rounded-lg p-2 text-muted transition-colors hover:bg-wash/[0.06] hover:text-text"
         aria-label="通知"
       >
         <IconBell className="h-[18px] w-[18px]" />
@@ -82,9 +96,9 @@ export function Topbar({ title, subtitle, onMenuClick }: TopbarProps) {
       <div className="relative" ref={menuRef}>
         <button
           onClick={() => setMenuOpen((v) => !v)}
-          className="flex items-center gap-2.5 rounded-xl border border-line bg-white/[0.04] py-1.5 pl-1.5 pr-3 transition-colors hover:border-line-2 hover:bg-white/[0.08]"
+          className="flex items-center gap-2.5 rounded-xl border border-line bg-wash/[0.04] py-1.5 pl-1.5 pr-3 transition-colors hover:border-line-2 hover:bg-wash/[0.08]"
         >
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-grad text-[11px] font-bold text-[#04121a]">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-grad text-[11px] font-bold text-onaccent">
             {initials(user?.username ?? '')}
           </span>
           <span className="hidden text-left sm:block">
@@ -108,7 +122,7 @@ export function Topbar({ title, subtitle, onMenuClick }: TopbarProps) {
               </div>
             </div>
             <div className="p-1.5">
-              <button className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-muted transition-colors hover:bg-white/[0.06] hover:text-text">
+              <button className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-muted transition-colors hover:bg-wash/[0.06] hover:text-text">
                 <IconUser className="h-4 w-4" />
                 个人资料
               </button>

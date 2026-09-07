@@ -387,7 +387,7 @@ export function TenantsPage() {
                     ? action === 'GRANT'
                       ? 'rounded-xl border border-accent/50 bg-grad-soft px-3 py-2.5 text-xs font-semibold text-text'
                       : 'rounded-xl border border-danger/50 bg-danger/10 px-3 py-2.5 text-xs font-semibold text-text'
-                    : 'rounded-xl border border-line bg-white/[0.03] px-3 py-2.5 text-xs text-muted hover:bg-white/[0.06]'
+                    : 'rounded-xl border border-line bg-wash/[0.03] px-3 py-2.5 text-xs text-muted hover:bg-wash/[0.06]'
                 }
               >
                 {action === 'GRANT' ? '授予 TENANT_ADMIN' : '撤销 TENANT_ADMIN'}
@@ -409,7 +409,7 @@ export function TenantsPage() {
             }
           />
 
-          <div className="rounded-xl border border-line bg-black/20 px-3.5 py-3">
+          <div className="rounded-xl border border-line bg-well/20 px-3.5 py-3">
             <p className="text-[11px] leading-relaxed text-muted">
               边界说明：创建租户时会自动将创建人设为本租户管理员（一次性内置规则）；此处为可反复执行的
               运维指派能力，二者职责分离、互不替代。

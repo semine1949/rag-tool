@@ -19,7 +19,7 @@ export function Tabs({ items, value, onChange, className }: TabsProps) {
   return (
     <div
       className={cn(
-        'inline-flex items-center gap-1 rounded-xl border border-line bg-black/25 p-1',
+        'inline-flex items-center gap-1 rounded-xl border border-line bg-field p-1',
         className,
       )}
     >
@@ -32,8 +32,8 @@ export function Tabs({ items, value, onChange, className }: TabsProps) {
             className={cn(
               'inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition-all',
               active
-                ? 'bg-grad text-[#04121a] shadow-glow'
-                : 'text-muted hover:bg-white/[0.06] hover:text-text',
+                ? 'bg-grad text-onaccent shadow-glow'
+                : 'text-muted hover:bg-wash/[0.06] hover:text-text',
             )}
           >
             {it.label}
@@ -41,7 +41,7 @@ export function Tabs({ items, value, onChange, className }: TabsProps) {
               <span
                 className={cn(
                   'rounded-full px-1.5 text-[10px]',
-                  active ? 'bg-black/20' : 'bg-white/[0.08]',
+                  active ? 'bg-black/20' : 'bg-wash/[0.08]',
                 )}
               >
                 {it.count}

@@ -376,7 +376,7 @@ export function ChatPage() {
                   className={`block w-full truncate rounded-lg border px-2.5 py-2 text-left text-xs transition-colors ${
                     activeSessionId === s.sessionId
                       ? 'border-accent/50 bg-accent/10 text-text'
-                      : 'border-transparent bg-white/[0.03] text-muted hover:border-line hover:text-text'
+                      : 'border-transparent bg-wash/[0.03] text-muted hover:border-line hover:text-text'
                   }`}
                 >
                   {s.title}
@@ -410,7 +410,7 @@ export function ChatPage() {
               kbs.map((kb) => (
                 <label
                   key={kb.id}
-                  className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-white/[0.03] px-3 py-2.5 transition-all hover:border-accent/30 hover:bg-white/[0.06]"
+                  className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-wash/[0.03] px-3 py-2.5 transition-all hover:border-accent/30 hover:bg-wash/[0.06]"
                 >
                   <div className="pt-0.5">
                     <Checkbox
@@ -511,7 +511,7 @@ export function ChatPage() {
       <Card padding="none" className="flex h-[calc(100vh-140px)] flex-col overflow-hidden">
         <div className="flex shrink-0 items-center justify-between border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-grad text-[#04121a]">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-grad text-onaccent">
               <IconSparkles className="h-4 w-4" />
             </span>
             <div>
@@ -544,7 +544,7 @@ export function ChatPage() {
                   <button
                     key={s}
                     onClick={() => handleSend(s)}
-                    className="rounded-xl border border-line bg-white/[0.04] px-3 py-2 text-[11px] text-muted transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:text-text"
+                    className="rounded-xl border border-line bg-wash/[0.04] px-3 py-2 text-[11px] text-muted transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:text-text"
                   >
                     {s}
                   </button>
@@ -573,7 +573,7 @@ export function ChatPage() {
                 }
               }}
               placeholder="输入你的问题，Enter 发送，Shift + Enter 换行…"
-              className="max-h-32 min-h-[42px] flex-1 resize-none rounded-xl border border-line bg-black/25 px-3.5 py-2.5 text-[13px] leading-relaxed text-text placeholder:text-muted-2 focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/15"
+              className="max-h-32 min-h-[42px] flex-1 resize-none rounded-[11px] border border-line bg-field px-3.5 py-2.5 text-[13px] leading-relaxed text-text placeholder:text-muted-2 focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/15"
             />
             {sending ? (
               <Button variant="danger" onClick={handleStop} icon={<IconStop className="h-4 w-4" />}>

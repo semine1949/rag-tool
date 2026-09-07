@@ -48,7 +48,7 @@ export function IsolationDiagram() {
             )}
 
             <div
-              className="rounded-xl border bg-white/[0.03] p-4 transition-all hover:bg-white/[0.055]"
+              className="rounded-xl border bg-wash/[0.03] p-4 transition-all hover:bg-wash/[0.055]"
               style={{ borderColor: `${lv.color}33`, marginLeft: i * 14 }}
             >
               <div className="flex items-start gap-3.5">
@@ -81,7 +81,7 @@ export function IsolationDiagram() {
                     {lv.items.map((it) => (
                       <span
                         key={it}
-                        className="rounded-md border border-line bg-black/25 px-2 py-0.5 text-[10px] text-muted"
+                        className="rounded-md border border-line bg-wash/[0.06] px-2 py-0.5 text-[10px] text-muted"
                       >
                         {it}
                       </span>
@@ -94,7 +94,7 @@ export function IsolationDiagram() {
         );
       })}
 
-      <div className="rounded-xl border border-line bg-black/20 px-3.5 py-3">
+      <div className="rounded-xl border border-line bg-well/20 px-3.5 py-3">
         <p className="text-[11px] leading-relaxed text-muted">
           请求进入后依次校验
           <span className="mx-1 text-accent">租户归属</span>→

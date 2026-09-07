@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NebulaKB · 企业级 RAG 知识库平台</title>
+    <!-- 主题防闪烁：默认浅色苹果(不需 data-theme)，仅当用户偏好深色时在 CSS 应用前挂 data-theme=dark，避免深色用户刷新首帧闪白 -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem('nebula.theme') === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

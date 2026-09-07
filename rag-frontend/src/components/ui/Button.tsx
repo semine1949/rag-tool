@@ -16,10 +16,10 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 /** 各变体样式：primary 使用品牌渐变 + 辉光 */
 const VARIANTS: Record<Variant, string> = {
   primary:
-    'bg-grad text-[#04121a] font-semibold shadow-glow hover:shadow-[0_16px_36px_-12px_rgba(34,211,238,.75)] hover:-translate-y-0.5',
+    'bg-grad text-onaccent font-semibold shadow-glow hover:brightness-105 hover:-translate-y-0.5',
   secondary:
-    'bg-white/[0.06] text-text border border-line hover:bg-white/[0.1] hover:border-line-2',
-  ghost: 'text-muted hover:text-text hover:bg-white/[0.06]',
+    'bg-wash/[0.06] text-text border border-line hover:bg-wash/[0.1] hover:border-line-2',
+  ghost: 'text-muted hover:text-text hover:bg-wash/[0.06]',
   outline:
     'border border-accent/40 text-accent hover:bg-accent/10 hover:border-accent/70',
   danger:
@@ -42,7 +42,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       disabled={disabled || loading}
       className={cn(
-        'inline-flex items-center justify-center rounded-xl transition-all duration-200',
+        'inline-flex items-center justify-center rounded-[11px] transition-all duration-200',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
         'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none',
         VARIANTS[variant],

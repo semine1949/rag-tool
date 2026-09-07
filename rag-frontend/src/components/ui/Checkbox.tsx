@@ -30,12 +30,12 @@ export function Checkbox({ checked, onChange, label, disabled, className }: Chec
         <span
           className={cn(
             'h-4 w-4 rounded-[5px] border transition-all',
-            checked ? 'border-transparent bg-grad' : 'border-line-2 bg-black/30',
+            checked ? 'border-transparent bg-grad' : 'border-line-2 bg-well/30',
           )}
         />
         {checked && (
           <svg
-            className="absolute h-3 w-3 text-[#04121a]"
+            className="absolute h-3 w-3 text-onaccent"
             viewBox="0 0 20 20"
             fill="none"
             stroke="currentColor"
@@ -74,7 +74,7 @@ export function Switch({ checked, onChange, label, disabled }: SwitchProps) {
         onClick={() => onChange(!checked)}
         className={cn(
           'relative h-5 w-9 rounded-full border transition-all',
-          checked ? 'border-transparent bg-grad' : 'border-line-2 bg-black/40',
+          checked ? 'border-transparent bg-grad' : 'border-line-2 bg-well/40',
         )}
       >
         <span

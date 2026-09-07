@@ -80,7 +80,7 @@ export function DonutChart({ data, size = 168, thickness = 22 }: DonutChartProps
             key={a.type}
             onMouseEnter={() => setActive(a.index)}
             onMouseLeave={() => setActive(null)}
-            className="flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2 py-1 transition-colors hover:bg-white/[0.05]"
+            className="flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2 py-1 transition-colors hover:bg-wash/[0.05]"
           >
             <span className="flex min-w-0 items-center gap-2 text-xs text-muted">
               <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: a.color }} />

@@ -126,7 +126,7 @@ export function CreateKbModal({ open, onClose, onSubmit, models }: CreateKbModal
                     'rounded-xl border px-3 py-2.5 text-left transition-all',
                     active
                       ? 'border-accent/50 bg-grad-soft'
-                      : 'border-line bg-white/[0.03] hover:border-line-2 hover:bg-white/[0.06]',
+                      : 'border-line bg-wash/[0.03] hover:border-line-2 hover:bg-wash/[0.06]',
                   )}
                 >
                   <p className={cn('text-xs font-semibold', active ? 'text-text' : 'text-muted')}>
@@ -155,7 +155,7 @@ export function CreateKbModal({ open, onClose, onSubmit, models }: CreateKbModal
                     'rounded-xl border px-3 py-2.5 text-left transition-all',
                     active
                       ? 'border-accent-2/50 bg-grad-soft'
-                      : 'border-line bg-white/[0.03] hover:border-line-2 hover:bg-white/[0.06]',
+                      : 'border-line bg-wash/[0.03] hover:border-line-2 hover:bg-wash/[0.06]',
                   )}
                 >
                   <p className={cn('text-xs font-semibold', active ? 'text-text' : 'text-muted')}>

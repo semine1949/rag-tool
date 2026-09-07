@@ -2,7 +2,7 @@ import { forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTML
 import { cn } from '@/lib/utils/cn';
 
 const FIELD_BASE =
-  'w-full rounded-xl bg-black/25 border border-line px-3.5 text-sm text-text placeholder:text-muted-2 ' +
+  'w-full rounded-[11px] bg-field border border-line px-3.5 text-sm text-text placeholder:text-muted-2 ' +
   'transition-colors focus:outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/15 ' +
   'disabled:opacity-50 disabled:cursor-not-allowed';
 

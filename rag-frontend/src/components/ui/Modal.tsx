@@ -70,7 +70,7 @@ export function Modal({
           <button
             onClick={onClose}
             aria-label="关闭"
-            className="rounded-lg p-1.5 text-muted transition-colors hover:bg-white/[0.08] hover:text-text"
+            className="rounded-lg p-1.5 text-muted transition-colors hover:bg-wash/[0.08] hover:text-text"
           >
             <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
@@ -81,7 +81,7 @@ export function Modal({
         <div className="max-h-[62vh] overflow-y-auto px-6 py-5">{children}</div>
 
         {footer && (
-          <div className="flex items-center justify-end gap-3 border-t border-line bg-black/20 px-6 py-4">
+          <div className="flex items-center justify-end gap-3 border-t border-line bg-well/20 px-6 py-4">
             {footer}
           </div>
         )}

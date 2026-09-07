@@ -128,7 +128,7 @@ export function LoginPage() {
         {/* 左侧：品牌与特性 */}
         <div className="hidden lg:block">
           <div className="mb-8 flex items-center gap-3">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-grad text-[#04121a] shadow-glow">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-grad text-onaccent shadow-glow">
               <IconSparkles className="h-6 w-6" />
             </span>
             <div>
@@ -168,7 +168,7 @@ export function LoginPage() {
         <div className="mx-auto w-full max-w-[440px]">
           {/* 移动端品牌 */}
           <div className="mb-6 flex items-center justify-center gap-2.5 lg:hidden">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-grad text-[#04121a]">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-grad text-onaccent">
               <IconSparkles className="h-5 w-5" />
             </span>
             <span className="text-lg font-bold text-text">NebulaKB</span>
@@ -255,7 +255,7 @@ export function LoginPage() {
                   登录平台
                 </Button>
 
-                <div className="rounded-xl border border-line bg-black/20 px-3.5 py-3">
+                <div className="rounded-xl border border-line bg-well/20 px-3.5 py-3">
                   <p className="mb-1.5 text-[11px] font-medium text-muted">登录账号</p>
                   <div className="flex flex-wrap gap-1.5">
                     <Badge tone="accent">admin / admin123</Badge>

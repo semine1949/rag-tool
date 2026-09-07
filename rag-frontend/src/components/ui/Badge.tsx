@@ -17,7 +17,7 @@ const TONES: Record<BadgeTone, string> = {
   ok: 'bg-ok/12 text-ok border-ok/25',
   warn: 'bg-warn/12 text-warn border-warn/25',
   danger: 'bg-danger/12 text-danger border-danger/25',
-  neutral: 'bg-white/[0.06] text-muted border-line',
+  neutral: 'bg-wash/[0.06] text-muted border-line',
 };
 
 export interface BadgeProps {

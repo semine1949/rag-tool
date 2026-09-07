@@ -30,8 +30,8 @@ export function RingChart({
       <svg width={size} height={size} className="-rotate-90">
         <defs>
           <linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#22d3ee" />
-            <stop offset="100%" stopColor="#a855f7" />
+            <stop offset="0%" stopColor="#0071e3" />
+            <stop offset="100%" stopColor="#42a5f5" />
           </linearGradient>
         </defs>
         {/* 轨道 */}
@@ -40,7 +40,7 @@ export function RingChart({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="rgba(255,255,255,0.07)"
+          stroke="rgb(var(--wash) / 0.07)"
           strokeWidth={thickness}
         />
         {/* 进度 */}

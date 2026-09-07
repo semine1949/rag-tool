@@ -34,7 +34,7 @@ export function MetricCard({ metric, index, icon }: MetricCardProps) {
         <div className="mb-3 flex items-center justify-between">
           <span
             className={cn(
-              'flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-white/[0.04]',
+              'flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-wash/[0.04]',
               tone.text,
             )}
           >

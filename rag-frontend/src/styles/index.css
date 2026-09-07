@@ -1,8 +1,127 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* =========================================================
+   主题变量
+   ---------------------------------------------------------
+   默认主题 = 苹果极简（纯白底 + 深灰字 + 苹果蓝强调），无需 data-theme 即生效。
+   可选深色星云主题通过 <html data-theme="dark"> 激活（保留原青→紫品牌渐变）。
+   颜色分两类：
+   - 纯色 token 存 "r g b" 三元组，供 tailwind 用 rgb(var()/<alpha-value>) 组合出透明修饰
+   - 自带透明度的表面/边框及复合值（渐变/阴影）存完整 color，用 var() 整段引用
+   ========================================================= */
+@layer base {
+  /* ===== 默认：纯白苹果极简（apple.com.cn 风格） ===== */
+  :root {
+    /* 背景层级（r g b）：页面纯白，区块用浅灰分层 */
+    --bg: 255 255 255; /* #ffffff */
+    --bg-2: 245 245 247; /* #f5f5f7 次级区块底 */
+    --bg-3: 251 251 253; /* #fbfbfd */
+    /* 玻璃表面（整段，自带 alpha）：卡片半透明白 + blur */
+    --surface: rgba(255, 255, 255, 0.82);
+    --surface-2: rgba(245, 245, 247, 0.9);
+    /* 边框（整段，淡描边） */
+    --line: rgba(0, 0, 0, 0.1);
+    --line-2: rgba(0, 0, 0, 0.18);
+    /* 文字（r g b） */
+    --text: 29 29 31; /* #1d1d1f */
+    --muted: 110 110 115; /* #6e6e73 */
+    --muted-2: 134 134 139; /* #86868b */
+    /* 主色：苹果蓝（r g b） */
+    --accent: 0 113 227; /* #0071e3 */
+    --accent-2: 0 113 227; /* #0071e3 */
+    --accent-3: 90 200 250; /* #5ac8fa */
+    /* 状态色（r g b）：iOS 语义色 */
+    --ok: 52 199 89; /* #34c759 */
+    --warn: 255 159 10; /* #ff9f0a */
+    --danger: 255 59 48; /* #ff3b30 */
+    --pink: 255 45 146; /* #ff2d92 */
+    /* 渐变/强调色上的文字色：苹果蓝渐变用白字 */
+    --on-accent: 255 255 255;
+    /* 明暗翻转叠加层（r g b）：白底上用深色表达 hover/凹陷 */
+    --wash: 0 0 0;
+    --well: 0 0 0;
+    /* 输入/字段底色（整段）：白底用极浅黑填充 rgba(0,0,0,.04) */
+    --field-bg: rgba(0, 0, 0, 0.04);
+    /* 渐变 / 阴影（整段复合值）：主渐变用苹果蓝 */
+    --grad: linear-gradient(135deg, #0071e3 0%, #42a5f5 100%);
+    --grad-soft: linear-gradient(135deg, rgba(0, 113, 227, 0.12), rgba(0, 113, 227, 0.06));
+    --auth-left: linear-gradient(160deg, #ffffff, #f5f5f7 60%, #eef1f6);
+    --shadow-card: 0 12px 40px -18px rgba(0, 0, 0, 0.22);
+    --shadow-glow: 0 10px 24px -10px rgba(0, 113, 227, 0.35);
+    --shadow-glow-2: 0 10px 26px -10px rgba(66, 165, 245, 0.35);
+    /* body 背景光晕：极淡品牌氛围 */
+    --body-glow:
+      radial-gradient(900px 500px at 12% -10%, rgba(0, 113, 227, 0.04), transparent 60%),
+      radial-gradient(800px 420px at 92% 0%, rgba(66, 165, 245, 0.04), transparent 60%);
+    /* 玻璃卡片自定义样式 */
+    --glass-bg: rgba(255, 255, 255, 0.82);
+    --glass-border: rgba(0, 0, 0, 0.08);
+    --glass-bar-bg: rgba(255, 255, 255, 0.8);
+    --glass-hover-border: rgba(0, 113, 227, 0.25);
+    --glass-hover-shadow:
+      0 18px 40px -22px rgba(0, 0, 0, 0.16),
+      0 0 0 1px rgba(0, 0, 0, 0.04);
+    --scrollbar-thumb: rgba(0, 0, 0, 0.18);
+    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
+    --autofill-bg: rgba(255, 255, 255, 0.98);
+    /* 背景浮动光斑色（Background 组件引用）：极淡蓝 */
+    --orb-1: rgba(0, 113, 227, 0.08);
+    --orb-2: rgba(66, 165, 245, 0.07);
+    --orb-3: rgba(90, 200, 250, 0.06);
+  }
+
+  /* ===== 可选：深色星云主题（保留原青紫品牌渐变） ===== */
+  [data-theme='dark'] {
+    --bg: 7 11 21;
+    --bg-2: 11 17 32;
+    --bg-3: 14 22 38;
+    --surface: rgba(18, 26, 46, 0.62);
+    --surface-2: rgba(24, 34, 58, 0.55);
+    --line: rgba(255, 255, 255, 0.08);
+    --line-2: rgba(255, 255, 255, 0.14);
+    --text: 232 238 251;
+    --muted: 138 152 181;
+    --muted-2: 95 110 140;
+    --accent: 34 211 238;
+    --accent-2: 168 85 247;
+    --accent-3: 59 130 246;
+    --ok: 52 211 153;
+    --warn: 251 191 36;
+    --danger: 248 113 113;
+    --pink: 244 114 182;
+    /* 渐变上的文字色：深色主题青紫渐变较亮，用深字 */
+    --on-accent: 4 18 26;
+    --wash: 255 255 255;
+    --well: 0 0 0;
+    /* 输入/字段底色（整段）：深色下用更深的凹陷 */
+    --field-bg: rgba(0, 0, 0, 0.25);
+    --grad: linear-gradient(135deg, #22d3ee 0%, #a855f7 100%);
+    --grad-soft: linear-gradient(135deg, rgba(34, 211, 238, 0.16), rgba(168, 85, 247, 0.16));
+    --auth-left: linear-gradient(160deg, #0a1428, #0c0f1f 60%, #0a0716);
+    --shadow-card: 0 18px 50px -20px rgba(0, 0, 0, 0.7);
+    --shadow-glow: 0 10px 26px -10px rgba(34, 211, 238, 0.6);
+    --shadow-glow-2: 0 14px 32px -10px rgba(168, 85, 247, 0.7);
+    --body-glow:
+      radial-gradient(1200px 600px at 12% -10%, rgba(34, 211, 238, 0.08), transparent 60%),
+      radial-gradient(1000px 500px at 90% 0%, rgba(168, 85, 247, 0.08), transparent 60%);
+    --glass-bg: rgba(18, 26, 46, 0.62);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-bar-bg: rgba(10, 16, 30, 0.72);
+    --glass-hover-border: rgba(34, 211, 238, 0.35);
+    --glass-hover-shadow:
+      0 20px 46px -22px rgba(0, 0, 0, 0.8),
+      0 0 0 1px rgba(34, 211, 238, 0.12),
+      0 12px 40px -18px rgba(34, 211, 238, 0.35);
+    --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
+    --autofill-bg: rgba(18, 26, 46, 0.9);
+    --orb-1: rgba(34, 211, 238, 0.3);
+    --orb-2: rgba(168, 85, 247, 0.28);
+    --orb-3: rgba(59, 130, 246, 0.24);
+  }
+}
 
 /* ===== 基础层：全局重置与滚动条 ===== */
 @layer base {
@@ -18,11 +137,12 @@
 
   body {
     @apply bg-bg text-text font-sans antialiased;
-    /* 深色底 + 轻微径向光晕，营造星云背景 */
-    background-image:
-      radial-gradient(1200px 600px at 12% -10%, rgba(34, 211, 238, 0.08), transparent 60%),
-      radial-gradient(1000px 500px at 90% 0%, rgba(168, 85, 247, 0.08), transparent 60%);
+    /* 主题背景 + 极淡光晕 */
+    background-image: var(--body-glow);
     background-attachment: fixed;
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease;
   }
 
   ::-webkit-scrollbar {
@@ -33,33 +153,36 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--scrollbar-thumb);
     border-radius: 999px;
+    transition: background 0.2s ease;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.22);
+    background: var(--scrollbar-thumb-hover);
   }
 
-  /* 输入框自动填充时保持深色主题 */
+  /* 输入框自动填充时匹配当前主题文字/底 */
   input:-webkit-autofill,
   input:-webkit-autofill:focus {
-    -webkit-text-fill-color: #e8eefb;
-    -webkit-box-shadow: 0 0 0 1000px rgba(18, 26, 46, 0.9) inset;
+    -webkit-text-fill-color: rgb(var(--text) / 1);
+    -webkit-box-shadow: 0 0 0 1000px var(--autofill-bg) inset;
+    transition: background-color 9999s ease-out;
   }
 }
 
 /* ===== 组件层：可复用的玻璃拟态样式 ===== */
 @layer components {
-  /* 玻璃卡片：surface + 18px 背景模糊 + 细边框 */
+  /* 玻璃卡片：半透明表面 + 背景模糊 + 淡边框 + 18px 圆角 */
   .glass {
-    background: rgba(18, 26, 46, 0.62);
-    -webkit-backdrop-filter: blur(18px);
-    backdrop-filter: blur(18px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    box-shadow: var(--shadow-card);
   }
 
-  /* 卡片 hover：上浮 + 辉光 + 边框提亮 */
+  /* 卡片 hover：轻微上浮 + 柔和阴影加深 */
   .glass-hover {
     transition:
       transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1),
@@ -67,17 +190,14 @@
       border-color 0.25s ease;
   }
   .glass-hover:hover {
-    transform: translateY(-4px);
-    border-color: rgba(34, 211, 238, 0.35);
-    box-shadow:
-      0 20px 46px -22px rgba(0, 0, 0, 0.8),
-      0 0 0 1px rgba(34, 211, 238, 0.12),
-      0 12px 40px -18px rgba(34, 211, 238, 0.35);
+    transform: translateY(-3px);
+    border-color: var(--glass-hover-border);
+    box-shadow: var(--glass-hover-shadow);
   }
 
-  /* 渐变文字：主色青 -> 紫 */
+  /* 渐变文字：默认主题为苹果蓝渐变，深色主题为青紫渐变（均取当前 var(--grad)） */
   .text-grad {
-    background: linear-gradient(135deg, #22d3ee, #a855f7);
+    background: var(--grad);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -86,9 +206,9 @@
 
   /* 顶部/侧栏毛玻璃条 */
   .glass-bar {
-    background: rgba(10, 16, 30, 0.72);
-    -webkit-backdrop-filter: blur(18px);
-    backdrop-filter: blur(18px);
+    background: var(--glass-bar-bg);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
   }
 }
 

@@ -9,7 +9,7 @@ export function Background() {
       <div
         className="absolute -left-[10%] -top-[15%] h-[520px] w-[520px] animate-float rounded-full"
         style={{
-          background: 'radial-gradient(circle, rgba(34,211,238,0.30), transparent 68%)',
+          background: 'radial-gradient(circle, var(--orb-1), transparent 68%)',
           filter: 'blur(90px)',
         }}
       />
@@ -17,7 +17,7 @@ export function Background() {
       <div
         className="absolute -right-[8%] top-[6%] h-[460px] w-[460px] animate-float rounded-full"
         style={{
-          background: 'radial-gradient(circle, rgba(168,85,247,0.28), transparent 68%)',
+          background: 'radial-gradient(circle, var(--orb-2), transparent 68%)',
           filter: 'blur(90px)',
           animationDelay: '-6s',
           animationDirection: 'reverse',
@@ -27,7 +27,7 @@ export function Background() {
       <div
         className="absolute bottom-[-18%] left-[32%] h-[500px] w-[500px] animate-float rounded-full"
         style={{
-          background: 'radial-gradient(circle, rgba(59,130,246,0.24), transparent 68%)',
+          background: 'radial-gradient(circle, var(--orb-3), transparent 68%)',
           filter: 'blur(90px)',
           animationDelay: '-12s',
         }}

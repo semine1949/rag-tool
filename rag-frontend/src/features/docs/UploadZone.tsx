@@ -91,13 +91,13 @@ export function UploadZone({ kbs, tasks, onUpload, disabled }: UploadZoneProps) 
             ? 'cursor-not-allowed border-line opacity-50'
             : dragging
               ? 'border-accent/70 bg-accent/[0.07]'
-              : 'border-line-2 bg-black/20 hover:border-accent/45 hover:bg-white/[0.03]',
+              : 'border-line-2 bg-well/20 hover:border-accent/45 hover:bg-wash/[0.03]',
         )}
       >
         <span
           className={cn(
             'mb-3.5 flex h-12 w-12 items-center justify-center rounded-2xl transition-all',
-            dragging ? 'scale-110 bg-grad text-[#04121a]' : 'bg-grad-soft text-accent',
+            dragging ? 'scale-110 bg-grad text-onaccent' : 'bg-grad-soft text-accent',
           )}
         >
           <IconUpload className="h-5 w-5" />
@@ -131,7 +131,7 @@ export function UploadZone({ kbs, tasks, onUpload, disabled }: UploadZoneProps) 
       {tasks.length > 0 && (
         <div className="space-y-2.5">
           {tasks.map((t) => (
-            <div key={t.id} className="rounded-xl border border-line bg-white/[0.03] px-3.5 py-3">
+            <div key={t.id} className="rounded-xl border border-line bg-wash/[0.03] px-3.5 py-3">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <p className="min-w-0 flex-1 truncate text-xs text-text">{t.fileName}</p>
                 <div className="flex shrink-0 items-center gap-2">

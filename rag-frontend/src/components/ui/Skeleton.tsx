@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils/cn';
 
 /** 骨架屏占位块 */
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse rounded-lg bg-white/[0.07]', className)} />;
+  return <div className={cn('animate-pulse rounded-lg bg-wash/[0.07]', className)} />;
 }
 
 /** 卡片形态的骨架屏 */

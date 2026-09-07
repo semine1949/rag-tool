@@ -178,7 +178,7 @@ export function UsersPage() {
       title: '用户',
       render: (u) => (
         <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-grad text-[10px] font-bold text-[#04121a]">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-grad text-[10px] font-bold text-onaccent">
             {initials(u.username)}
           </span>
           <div className="min-w-0">
@@ -368,17 +368,17 @@ export function UsersPage() {
                       'flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ' +
                       (active
                         ? 'border-accent/50 bg-grad-soft'
-                        : 'border-line bg-white/[0.03] hover:bg-white/[0.06]')
+                        : 'border-line bg-wash/[0.03] hover:bg-wash/[0.06]')
                     }
                   >
                     <span className="flex items-center gap-2.5">
                       <span
                         className={
                           'flex h-4 w-4 items-center justify-center rounded-full border ' +
-                          (active ? 'border-transparent bg-grad' : 'border-line-2 bg-black/30')
+                          (active ? 'border-transparent bg-grad' : 'border-line-2 bg-well/30')
                         }
                       >
-                        {active && <span className="h-1.5 w-1.5 rounded-full bg-[#04121a]" />}
+                        {active && <span className="h-1.5 w-1.5 rounded-full bg-onaccent" />}
                       </span>
                       <span className={active ? 'text-xs font-medium text-text' : 'text-xs text-muted'}>
                         {ROLE_LABEL[role]}

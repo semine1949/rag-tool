@@ -1,68 +1,85 @@
 /** @type {import('tailwindcss').Config} */
 // 设计系统 Design Token 全量映射到 Tailwind theme
+// 说明：所有颜色改为引用 CSS 变量，实现运行期通过 <html data-theme="..."> 切换主题（深浅两套）。
+// 变量在三处定义：
+//   - :root（深色，默认，值与原设计 token 完全一致，保证零回归）
+//   - [data-theme='apple']（浅色 Apple 风）
+// 见 src/styles/index.css @layer base 顶部变量定义。
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        // 背景层级
+        // 背景层级：纯色，支持透明修饰符（rgb(var(--x)/<alpha-value>)）
         bg: {
-          DEFAULT: '#070b15',
-          2: '#0b1120',
-          3: '#0e1626',
+          DEFAULT: 'rgb(var(--bg) / <alpha-value>)',
+          2: 'rgb(var(--bg-2) / <alpha-value>)',
+          3: 'rgb(var(--bg-3) / <alpha-value>)',
         },
-        // 玻璃拟态表面
+        // 玻璃拟态表面：自带透明度，用整段 var（使用处不带 alpha 修饰）
         surface: {
-          DEFAULT: 'rgba(18,26,46,0.62)',
-          2: 'rgba(24,34,58,0.55)',
+          DEFAULT: 'var(--surface)',
+          2: 'var(--surface-2)',
         },
-        // 边框
+        // 边框：自带透明度，用整段 var
         line: {
-          DEFAULT: 'rgba(255,255,255,0.08)',
-          2: 'rgba(255,255,255,0.14)',
+          DEFAULT: 'var(--line)',
+          2: 'var(--line-2)',
         },
-        // 文字
-        text: '#e8eefb',
+        // 文字：纯色
+        text: 'rgb(var(--text) / <alpha-value>)',
         muted: {
-          DEFAULT: '#8a98b5',
-          2: '#5f6e8c',
+          DEFAULT: 'rgb(var(--muted) / <alpha-value>)',
+          2: 'rgb(var(--muted-2) / <alpha-value>)',
         },
-        // 主色
+        // 主色（纯色，支持透明修饰）
         accent: {
-          DEFAULT: '#22d3ee',
-          2: '#a855f7',
-          3: '#3b82f6',
+          DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
+          2: 'rgb(var(--accent-2) / <alpha-value>)',
+          3: 'rgb(var(--accent-3) / <alpha-value>)',
         },
-        // 状态色
-        ok: '#34d399',
-        warn: '#fbbf24',
-        danger: '#f87171',
-        pink: '#f472b6',
+        // 状态色（纯色）
+        ok: 'rgb(var(--ok) / <alpha-value>)',
+        warn: 'rgb(var(--warn) / <alpha-value>)',
+        danger: 'rgb(var(--danger) / <alpha-value>)',
+        pink: 'rgb(var(--pink) / <alpha-value>)',
+        // 明暗翻转的叠加层（rgb 三元组 + 组件侧固定 /alpha）
+        // wash：hover/高亮叠加（默认白主题为深色，深色主题为白色）
+        // well：输入/凹陷叠加
+        wash: 'rgb(var(--wash) / <alpha-value>)',
+        well: 'rgb(var(--well) / <alpha-value>)',
+        // 渐变/强调色上的文字色（默认白主题为白字，深色主题为深字）
+        onaccent: 'rgb(var(--on-accent) / <alpha-value>)',
+        // 输入/字段底色（整段 var，自带 alpha，随主题）
+        field: 'var(--field-bg)',
       },
       borderRadius: {
-        card: '16px',
+        card: '18px',
       },
       fontFamily: {
         sans: [
-          'Inter',
-          'PingFang SC',
-          'Microsoft YaHei',
           '-apple-system',
           'BlinkMacSystemFont',
+          'SF Pro Display',
+          'SF Pro Text',
           'Segoe UI',
+          'PingFang SC',
+          'Hiragino Sans GB',
+          'Microsoft YaHei',
+          'Helvetica Neue',
+          'Arial',
           'sans-serif',
         ],
       },
       backgroundImage: {
-        grad: 'linear-gradient(135deg,#22d3ee 0%,#a855f7 100%)',
-        'grad-soft':
-          'linear-gradient(135deg,rgba(34,211,238,.16),rgba(168,85,247,.16))',
-        'auth-left': 'linear-gradient(160deg,#0a1428,#0c0f1f 60%,#0a0716)',
+        grad: 'var(--grad)',
+        'grad-soft': 'var(--grad-soft)',
+        'auth-left': 'var(--auth-left)',
       },
       boxShadow: {
-        card: '0 18px 50px -20px rgba(0,0,0,.7)',
-        glow: '0 10px 26px -10px rgba(34,211,238,.6)',
-        'glow-2': '0 14px 32px -10px rgba(168,85,247,.7)',
+        card: 'var(--shadow-card)',
+        glow: 'var(--shadow-glow)',
+        'glow-2': 'var(--shadow-glow-2)',
       },
       backdropBlur: {
         glass: '18px',

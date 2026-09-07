@@ -144,13 +144,13 @@ export function DashboardPage() {
               {
                 name: '本期',
                 points: data.qaTrend.current,
-                color: '#22d3ee',
+                color: '#0071e3',
                 area: true,
               },
               {
                 name: '上期',
                 points: data.qaTrend.previous,
-                color: '#a855f7',
+                color: '#42a5f5',
                 dashed: true,
               },
             ]}
@@ -190,7 +190,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader title="文档类型分布" subtitle="按文件格式统计已索引文档" />
           <DonutChart data={data.docTypes} />
-          <div className="mt-5 rounded-xl border border-line bg-black/20 px-3.5 py-3">
+          <div className="mt-5 rounded-xl border border-line bg-well/20 px-3.5 py-3">
             <p className="text-[11px] leading-relaxed text-muted">
               PDF 与 DOCX 占比较高，建议为长文档启用
               <span className="mx-1 text-accent">层级分块策略</span>

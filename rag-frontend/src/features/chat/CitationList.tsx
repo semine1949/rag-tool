@@ -35,10 +35,10 @@ export function CitationList({ citations }: { citations: Citation[] }) {
               'group flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] transition-all',
               expanded === c.index
                 ? 'border-accent/50 bg-accent/10 text-text'
-                : 'border-line bg-white/[0.04] text-muted hover:border-accent/35 hover:text-text',
+                : 'border-line bg-wash/[0.04] text-muted hover:border-accent/35 hover:text-text',
             )}
           >
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-grad text-[9px] font-bold text-[#04121a]">
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-grad text-[9px] font-bold text-onaccent">
               {c.index}
             </span>
             <span className="max-w-[160px] truncate">{c.docName}</span>
@@ -56,7 +56,7 @@ export function CitationList({ citations }: { citations: Citation[] }) {
 
       {/* 展开的引用详情 */}
       {expanded !== null && (
-        <div className="mt-2.5 animate-fade rounded-xl border border-line bg-black/25 p-3.5">
+        <div className="mt-2.5 animate-fade rounded-xl border border-line bg-wash/[0.06] p-3.5">
           {(() => {
             const c = citations.find((x) => x.index === expanded);
             if (!c) return null;

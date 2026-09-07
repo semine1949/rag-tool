@@ -108,10 +108,10 @@ export function LineChart({ series, height = 240, yTicks = 4 }: LineChartProps) 
                 y1={y}
                 x2={W - PAD.right}
                 y2={y}
-                stroke="rgba(255,255,255,0.06)"
+                stroke="rgb(var(--wash) / 0.06)"
                 strokeWidth="1"
               />
-              <text x={PAD.left - 10} y={y + 4} textAnchor="end" fontSize="10" fill="#5f6e8c">
+              <text x={PAD.left - 10} y={y + 4} textAnchor="end" fontSize="10" fill="rgb(var(--muted-2))">
                 {v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v}
               </text>
             </g>
@@ -127,7 +127,7 @@ export function LineChart({ series, height = 240, yTicks = 4 }: LineChartProps) 
               y={H - 8}
               textAnchor="middle"
               fontSize="10"
-              fill="#5f6e8c"
+              fill="rgb(var(--muted-2))"
             >
               {l}
             </text>
@@ -158,7 +158,7 @@ export function LineChart({ series, height = 240, yTicks = 4 }: LineChartProps) 
               y1={PAD.top}
               x2={xOf(hoverIdx)}
               y2={PAD.top + innerH}
-              stroke="rgba(255,255,255,0.22)"
+              stroke="rgb(var(--wash) / 0.22)"
               strokeWidth="1"
             />
             {series.map((s) => {
@@ -170,7 +170,7 @@ export function LineChart({ series, height = 240, yTicks = 4 }: LineChartProps) 
                   cx={xOf(hoverIdx)}
                   cy={yOf(p.value)}
                   r="4"
-                  fill="#070b15"
+                  fill="rgb(var(--bg))"
                   stroke={s.color}
                   strokeWidth="2.2"
                 />

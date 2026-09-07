@@ -64,7 +64,7 @@ export function MessageBubble({ message, username }: MessageBubbleProps) {
             {message.content}
           </p>
         </div>
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-line bg-white/[0.06] text-[10px] font-bold text-text">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-line bg-wash/[0.06] text-[10px] font-bold text-text">
           {initials(username)}
         </span>
       </div>
@@ -73,7 +73,7 @@ export function MessageBubble({ message, username }: MessageBubbleProps) {
 
   return (
     <div className="flex gap-3">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-grad text-[#04121a] shadow-glow">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-grad text-onaccent shadow-glow">
         <IconSparkles className="h-4 w-4" />
       </span>
 

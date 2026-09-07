@@ -181,7 +181,7 @@ export function DocsPage() {
       title: '文档名称',
       render: (d) => (
         <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line bg-white/[0.04] text-muted">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line bg-wash/[0.04] text-muted">
             <IconDoc className="h-4 w-4" />
           </span>
           <div className="min-w-0">

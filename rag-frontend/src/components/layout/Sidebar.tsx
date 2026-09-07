@@ -74,7 +74,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       >
         {/* 品牌区 */}
         <div className="flex h-16 shrink-0 items-center gap-2.5 border-b border-line px-5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-grad text-[#04121a] shadow-glow">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-grad text-onaccent shadow-glow">
             <IconSparkles className="h-5 w-5" />
           </span>
           <div className="min-w-0">
@@ -105,15 +105,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                           onClick={onClose}
                           className={({ isActive }) =>
                             cn(
-                              'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all',
+                              'group relative flex items-center gap-3 rounded-[11px] px-3.5 py-2.5 text-[13px] font-medium transition-all',
                               isActive
-                                ? 'border border-accent/25 bg-grad-soft text-text'
-                                : 'border border-transparent text-muted hover:bg-white/[0.05] hover:text-text',
+                                ? 'bg-grad-soft text-text'
+                                : 'text-muted hover:bg-wash/[0.05] hover:text-text',
                             )
                           }
                         >
                           {({ isActive }) => (
                             <>
+                              {isActive && (
+                                <span className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-grad" />
+                              )}
                               <Icon
                                 className={cn(
                                   'h-[18px] w-[18px] shrink-0 transition-colors',
@@ -121,9 +124,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                 )}
                               />
                               <span className="truncate">{item.label}</span>
-                              {isActive && (
-                                <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent shadow-glow" />
-                              )}
                             </>
                           )}
                         </NavLink>

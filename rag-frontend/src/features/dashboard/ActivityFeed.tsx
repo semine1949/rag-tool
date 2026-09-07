@@ -44,7 +44,7 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
             >
               <Icon className="h-4 w-4" />
             </span>
-            <div className="min-w-0 flex-1 rounded-xl px-2 py-1 transition-colors hover:bg-white/[0.035]">
+            <div className="min-w-0 flex-1 rounded-xl px-2 py-1 transition-colors hover:bg-wash/[0.035]">
               <p className="text-xs leading-relaxed text-text">
                 <span className="font-semibold">{item.actor}</span>
                 <span className="mx-1 text-muted">{item.action}</span>

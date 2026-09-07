@@ -52,7 +52,7 @@ export function PermissionMatrix() {
             return (
               <tr
                 key={perm}
-                className="border-b border-line/60 transition-colors last:border-0 hover:bg-white/[0.035]"
+                className="border-b border-line transition-colors last:border-0 hover:bg-wash/[0.035]"
               >
                 <td className="px-4 py-3">
                   <p className="text-xs font-medium text-text">{meta.label}</p>
@@ -68,7 +68,7 @@ export function PermissionMatrix() {
                           'inline-flex h-6 w-6 items-center justify-center rounded-lg border',
                           granted
                             ? 'border-ok/30 bg-ok/12 text-ok'
-                            : 'border-line bg-white/[0.03] text-muted-2',
+                            : 'border-line bg-wash/[0.03] text-muted-2',
                         )}
                         title={granted ? '允许' : '拒绝'}
                       >

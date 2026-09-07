@@ -176,10 +176,10 @@ export function RolesPage() {
                   <span className="absolute left-[15px] top-[38px] h-[calc(100%-24px)] w-px bg-line" />
                 )}
                 <div className="flex gap-3.5">
-                  <span className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-grad text-xs font-bold text-[#04121a]">
+                  <span className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-grad text-xs font-bold text-onaccent">
                     {s.step}
                   </span>
-                  <div className="min-w-0 flex-1 rounded-xl border border-line bg-white/[0.03] px-3.5 py-2.5">
+                  <div className="min-w-0 flex-1 rounded-xl border border-line bg-wash/[0.03] px-3.5 py-2.5">
                     <p className="text-xs font-semibold text-text">{s.title}</p>
                     <p className="mt-1 text-[11px] leading-relaxed text-muted">{s.desc}</p>
                     <p className="mt-1.5 flex items-center gap-1.5 text-[10px] text-danger">
@@ -197,7 +197,7 @@ export function RolesPage() {
           <CardHeader title="认证机制" subtitle="JWT 双令牌与账号安全策略" />
           <div className="space-y-3">
             {AUTH_MECHANISMS.map((m) => (
-              <div key={m.title} className="rounded-xl border border-line bg-white/[0.03] p-3.5">
+              <div key={m.title} className="rounded-xl border border-line bg-wash/[0.03] p-3.5">
                 <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-text">
                   <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                   {m.title}

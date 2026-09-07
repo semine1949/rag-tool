@@ -220,3 +220,16 @@ export const IconStop = (p: IconProps) => (
     <rect x="6" y="6" width="12" height="12" rx="2" />
   </svg>
 );
+
+export const IconSun = (p: IconProps) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="4.5" />
+    <path d="M12 2.5v2M12 19.5v2M4.5 4.5l1.4 1.4M18.1 18.1l1.4 1.4M2.5 12h2M19.5 12h2M4.5 19.5l1.4-1.4M18.1 5.9l1.4-1.4" />
+  </svg>
+);
+
+export const IconMoon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />
+  </svg>
+);

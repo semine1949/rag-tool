@@ -214,7 +214,7 @@ export function KbsPage() {
                 </div>
 
                 {/* 统计信息 */}
-                <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl border border-line bg-black/20 px-3 py-2.5">
+                <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl border border-line bg-well/20 px-3 py-2.5">
                   <div>
                     <p className="text-[10px] text-muted-2">文档</p>
                     <p className="text-xs font-semibold text-text">{formatNumber(kb.docCount)}</p>
@@ -282,7 +282,7 @@ export function KbsPage() {
       >
         <div className="space-y-3">
           {opsTarget && (
-            <div className="mb-4 grid grid-cols-2 gap-3 rounded-xl border border-line bg-black/20 p-3.5">
+            <div className="mb-4 grid grid-cols-2 gap-3 rounded-xl border border-line bg-well/20 p-3.5">
               <div>
                 <p className="text-[10px] text-muted-2">当前配置</p>
                 <p className="mt-0.5 text-xs text-text">
@@ -311,7 +311,7 @@ export function KbsPage() {
           {COLLECTION_ACTIONS.map((action) => (
             <div
               key={action.key}
-              className="flex items-center justify-between gap-4 rounded-xl border border-line bg-white/[0.03] px-3.5 py-3"
+              className="flex items-center justify-between gap-4 rounded-xl border border-line bg-wash/[0.03] px-3.5 py-3"
             >
               <div className="min-w-0">
                 <p className="text-xs font-medium text-text">{action.label}</p>
