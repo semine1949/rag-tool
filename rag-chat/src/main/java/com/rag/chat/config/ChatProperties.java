@@ -16,7 +16,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * rag:
  *   chat:
  *     enabled: true
- *     chat-model: qwen-turbo
+ *     chat-model: deepseek-v4-flash
  *     rewrite-enabled: true
  *     context-window-tokens: 6000
  *     max-history-rounds: 10
@@ -34,7 +34,7 @@ public class ChatProperties {
     private boolean enabled = true;
 
     /** 默认对话模型（spring.ai.platform.models 中的逻辑模型名，须为 CHAT 类别） */
-    private String chatModel = "qwen-turbo";
+    private String chatModel = "deepseek-v4-flash";
 
     /** 查询改写开关（多轮上下文补全 + 复杂查询优化，失败自动降级为原始查询） */
     private boolean rewriteEnabled = true;

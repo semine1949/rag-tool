@@ -233,3 +233,10 @@ export const IconMoon = (p: IconProps) => (
     <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />
   </svg>
 );
+
+export const IconCopy = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+  </svg>
+);

@@ -39,7 +39,7 @@ public class ChatRequest {
     /** 会话 ID（可选，多轮对话续接时传入；为空则新建会话） */
     private String sessionId;
 
-    /** 对话模型名（可选，为空时回退全局默认 qwen-turbo） */
+    /** 对话模型名（可选，为空时回退全局默认模型，默认为 deepseek-v4-flash */
     private String model;
 
     /** 是否启用流式输出（默认 false，走同步接口） */

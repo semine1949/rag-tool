@@ -47,29 +47,6 @@ spring:
             candidate-multiplier: 3
 
         # ==================== Chat 对话模型（问答链路） ====================
-        # Qwen/Qwen2.5-7B-Instruct — 硅基流动（查询改写 + 回答生成共用）
-        qwen-turbo:
-          category: CHAT
-          protocol: OPENAI
-          base-url: https://api.siliconflow.cn
-          api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
-          model-name: Qwen/Qwen2.5-7B-Instruct
-          # 模型级默认温度（未命中场景温度时的兜底）
-          temperature: 0.7
-          # 场景化温度表：同一模型按场景差异化采样温度（请求级覆盖，不污染模型缓存）
-          # 场景 key 忽略大小写与下划线/连字符：classify/rewrite/rag-qa/chat-qa
-          scene-temperatures:
-            # 问题分类/二分类：确定性任务，温度 0
-            classify: 0.0
-            # 查询改写：确定性任务，温度 0（独立 REWRITE 场景）
-            rewrite: 0.0
-            # 知识库（RAG）问答：基于检索上下文严谨回答，低温 0.2
-            rag-qa: 0.2
-            # 通用问答/闲聊：允许适度发散，0.6
-            chat-qa: 0.6
-          max-tokens: 2048
-          stream-enabled: true
-
         # deepseek-ai/DeepSeek-R1 — 硅基流动（推理型：回答前先生成思维链 CoT，适合复杂推理/深度分析）
         # 调温依据：R1 采样温度对输出影响大，官方推荐 0.5~0.7 与 top_p 0.7（过低易使推理退化、过高易发散）；
         # 思维链会占用较多输出 token，max-tokens 需放大避免截断。

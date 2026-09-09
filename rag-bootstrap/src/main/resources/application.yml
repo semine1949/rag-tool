@@ -66,7 +66,7 @@ mybatis:
 rag:
   # ---------- Weaviate向量库配置 ----------
   weaviate:
-    url: http://192.168.71.14:8080
+    url: http://192.168.71.15:8080
     # 访问令牌（Weaviate 开启鉴权时填写，否则留空）
     token: ${RAG_WEAVIATE_TOKEN:}
     collection: Document_V1
@@ -98,7 +98,8 @@ rag:
     # 问答能力全局总开关（关闭时所有问答接口返回禁用提示，对纯检索接口零影响）
     enabled: true
     # 默认对话模型（spring.ai.platform.models 中的逻辑模型名，须为 CHAT 类别）
-    chat-model: qwen-turbo
+    # 原 qwen-turbo(Qwen/Qwen2.5-7B-Instruct) 幻觉严重已移除，改用 deepseek-v4-flash
+    chat-model: deepseek-v4-flash
     # 查询改写开关（多轮上下文补全 + 复杂查询优化，失败自动降级为原始查询）
     rewrite-enabled: true
     # 查询改写模型（为空时复用 chat-model）0
@@ -126,7 +127,7 @@ rag:
       2. 引用资料内容时，在引用处标注引用编号，格式为 [n]，n 与资料编号一一对应。
       3. 若参考资料不足以回答问题，请明确告知用户“根据现有资料无法回答”，不要猜测。
       4. 回答使用与用户提问相同的语言，保持简洁、准确、有条理。
-    pre-query-filter-enabled: false
+    pre-query-filter-enabled: true
     # 分类用模型（为空复用 chat-model，全程复用现有对话模型）
     pre-query-filter-model:
     pre-query-filter-prompt: |
