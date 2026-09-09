@@ -45,6 +45,9 @@
         <commons-compress.version>1.26.0</commons-compress.version>
         <!-- 统一 POI 版本为 5.4.0，与 Tika 3.1.0 传递引入的 poi-scratchpad 一致，避免 PoiLogManager NoClassDefFoundError -->
         <poi.version>5.4.0</poi.version>
+        <!-- 统一 PDFBox 版本为 3.0.4，与 Tika 3.1.0 一致；spring-ai-pdf-document-reader 传递 3.0.3 版本过旧，
+             会导致 tika-parser-pdf 运行时 NoSuchMethodError: PDF2XHTML.setIgnoreContentStreamSpaceGlyphs -->
+        <pdfbox.version>3.0.4</pdfbox.version>
     </properties>
 
     <dependencyManagement>
@@ -182,6 +185,39 @@
                 <groupId>org.apache.poi</groupId>
                 <artifactId>poi-scratchpad</artifactId>
                 <version>${poi.version}</version>
+            </dependency>
+
+            <!-- PDFBox：统一 3.0.4，与 Tika 3.1.0 一致；spring-ai-pdf-document-reader 传递的 3.0.3 版本过旧，
+                 会导致 tika-parser-pdf 运行时 PDF2XHTML.setIgnoreContentStreamSpaceGlyphs NoSuchMethodError -->
+            <dependency>
+                <groupId>org.apache.pdfbox</groupId>
+                <artifactId>pdfbox</artifactId>
+                <version>${pdfbox.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.pdfbox</groupId>
+                <artifactId>pdfbox-io</artifactId>
+                <version>${pdfbox.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.pdfbox</groupId>
+                <artifactId>fontbox</artifactId>
+                <version>${pdfbox.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.pdfbox</groupId>
+                <artifactId>pdfbox-tools</artifactId>
+                <version>${pdfbox.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.pdfbox</groupId>
+                <artifactId>xmpbox</artifactId>
+                <version>${pdfbox.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.pdfbox</groupId>
+                <artifactId>jbig2-imageio</artifactId>
+                <version>3.0.4</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
