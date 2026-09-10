@@ -23,4 +23,6 @@ public class KnowledgeBase {
     private String embeddingModel;
     private Integer status;
     private Date createTime;
+    /** 文档数（列表接口经 count 子查询派生，非落库字段；详情/无查询场景为 null） */
+    private Long docCount;
 }

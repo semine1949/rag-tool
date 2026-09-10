@@ -35,7 +35,7 @@ export interface BackendTenant {
   createTime?: string;
 }
 
-/** 后端知识库实体：{kbId, tenantId, kbName, description, embeddingModel, status, createTime} */
+/** 后端知识库实体：{kbId, tenantId, kbName, description, embeddingModel, status, createTime, docCount} */
 export interface BackendKb {
   kbId: number;
   tenantId: number;
@@ -44,6 +44,8 @@ export interface BackendKb {
   embeddingModel?: string | null;
   status: number;
   createTime?: string;
+  /** 文档数（列表接口经 count 子查询返回） */
+  docCount?: number | null;
 }
 
 /** 后端角色实体：{roleId, roleCode, roleName, description, status, createTime} */
@@ -177,7 +179,8 @@ export function mapKb(kb: BackendKb): KnowledgeBase {
     chunkOverlap: 120,
     vectorWeight: 0.7,
     topK: 5,
-    docCount: 0,
+    // 文档数取自后端列表接口返回的 docCount（缺失时兜底 0）
+    docCount: kb.docCount ?? 0,
     chunkCount: 0,
     // 后端未返回集合状态；真实后端默认视为可用，便于聊天页直接选择
     collectionStatus: 'READY',

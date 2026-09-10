@@ -11,22 +11,30 @@
         <result property="embeddingModel" column="embedding_model"/>
         <result property="status" column="status"/>
         <result property="createTime" column="create_time"/>
+        <!-- 文档数：由下列列表 SQL 的 count 子查询派生 -->
+        <result property="docCount" column="doc_count"/>
     </resultMap>
 
+    <!-- 公共可复用片段：知识库列 + 每库文档数 -->
+    <sql id="KbWithDocCountColumns">
+        k.kb_id, k.tenant_id, k.kb_name, k.description, k.embedding_model, k.status, k.create_time,
+        (SELECT COUNT(*) FROM kb_document d WHERE d.kb_id = k.kb_id) AS doc_count
+    </sql>
+
     <select id="findById" resultMap="KnowledgeBaseResultMap">
-        SELECT kb_id, tenant_id, kb_name, description, embedding_model, status, create_time
-        FROM kb_knowledge_base WHERE kb_id = #{kbId}
+        SELECT <include refid="KbWithDocCountColumns"/>
+        FROM kb_knowledge_base k WHERE k.kb_id = #{kbId}
     </select>
 
     <select id="findAll" resultMap="KnowledgeBaseResultMap">
-        SELECT kb_id, tenant_id, kb_name, description, embedding_model, status, create_time
-        FROM kb_knowledge_base ORDER BY create_time DESC
+        SELECT <include refid="KbWithDocCountColumns"/>
+        FROM kb_knowledge_base k ORDER BY k.create_time DESC
     </select>
 
     <select id="findByTenantId" resultMap="KnowledgeBaseResultMap">
-        SELECT kb_id, tenant_id, kb_name, description, embedding_model, status, create_time
-        FROM kb_knowledge_base WHERE tenant_id = #{tenantId}
-        ORDER BY create_time DESC
+        SELECT <include refid="KbWithDocCountColumns"/>
+        FROM kb_knowledge_base k WHERE k.tenant_id = #{tenantId}
+        ORDER BY k.create_time DESC
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="kbId" keyColumn="kb_id">

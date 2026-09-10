@@ -67,10 +67,11 @@ export function DocsPage() {
       setKbs(kbList);
 
       // 真实后端：逐知识库拉取文档并合并，忽略单个库的异常
+      // 因文档接口只按 kbId 返回、不含知识库名，这里用已获取的 kb.name 填充每行 kbName
       const grouped = await Promise.all(
         kbList.map(async (kb) => {
           try {
-            return await ragApi.documents(kb.id);
+            return await ragApi.documents(kb.id, kb.name);
           } catch {
             return [];
           }
@@ -133,7 +134,8 @@ export function DocsPage() {
           setTasks((prev) =>
             prev.map((t) => (t.id === taskId ? { ...t, progress: 100, status: 'success' } : t)),
           );
-          setDocs((prev) => [doc, ...prev]);
+          // 上传乐观插入：文档接口不含 kbName，用当前知识库名补齐该行所属知识库
+          setDocs((prev) => [{ ...doc, kbName: kb?.name ?? '' }, ...prev]);
           toast.success(`「${file.name}」上传成功，正在后台索引`);
           // 3 秒后移除已完成任务，保持界面整洁
           window.setTimeout(() => {

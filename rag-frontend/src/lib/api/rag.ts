@@ -203,7 +203,7 @@ export const ragApi = {
    * 而非 BackendFileResult（fileId）。此处用 docId 作为前端 DocumentItem.id，
    * 删除接口 DELETE /rag/documents/{docId} 才能命中真实主键。
    */
-  documents(kbId: number): Promise<DocumentItem[]> {
+  documents(kbId: number, kbName = ''): Promise<DocumentItem[]> {
     return request
       .get<BackendKbDocument[]>(`/rag/documents?kbId=${kbId}`)
       .then((list) =>
@@ -213,7 +213,7 @@ export const ragApi = {
           fileType: r.fileType ?? '',
           fileSizeKb: r.fileSize ? Math.round(r.fileSize / 1024) : 0,
           kbId,
-          kbName: '',
+          kbName,
           chunkCount: r.chunkCount ?? 0,
           version: Number(r.version ? r.version.replace(/[^0-9.]/g, '') || 1 : 1),
           status: toDocStatusFromProcess(r.processStatus),
