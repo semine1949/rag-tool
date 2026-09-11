@@ -88,6 +88,17 @@ public class RagCoreConfig implements WebMvcConfigurer {
     @Value("${rag.deepseek-ocr.timeout-ms:120000}")
     private long dsOcrTimeoutMs;
 
+    /**
+     * 通用 OCR 输出 token 上限（内嵌图 / 整份回退 OCR 使用）。
+     * 扫描件逐页 OCR 的 token 上限见 {@link #dsOcrPageMaxTokens}。
+     */
+    @Value("${rag.deepseek-ocr.max-tokens:4096}")
+    private int dsOcrMaxTokens;
+
+    /** 扫描件 PDF 逐页 OCR 的页输出 token 上限（单页文字密集，默认放大到 8192） */
+    @Value("${rag.deepseek-ocr.page-max-tokens:8192}")
+    private int dsOcrPageMaxTokens;
+
     @Bean
     public DocumentParseFactory documentParseFactory(OpenAiClient openAiClient) {
         Map<com.rag.common.enums.FileTypeEnum, Function<File, DocumentReader>> suppliers =
@@ -97,10 +108,12 @@ public class RagCoreConfig implements WebMvcConfigurer {
         Function<File, DocumentReader> tikaReader = f -> new TikaDocumentReader(new FileSystemResource(f));
         // 策略2：文本+图片混合文档 → Tika 文本提取 + 内嵌图片多模态 OCR
         Function<File, DocumentReader> mixedReader = f ->
-                new TikaOcrMixedParser(openAiClient, dsOcrBaseUrl, dsOcrApiKey, dsOcrModel, dsOcrTimeoutMs, f);
+                new TikaOcrMixedParser(openAiClient, dsOcrBaseUrl, dsOcrApiKey, dsOcrModel,
+                        dsOcrTimeoutMs, dsOcrMaxTokens, dsOcrPageMaxTokens, f);
         // 策略3：纯图片 → 多模态 OCR
         Function<File, DocumentReader> ocrReader = f ->
-                new DeepSeekOcrParser(openAiClient, dsOcrBaseUrl, dsOcrApiKey, dsOcrModel, dsOcrTimeoutMs, f);
+                new DeepSeekOcrParser(openAiClient, dsOcrBaseUrl, dsOcrApiKey, dsOcrModel,
+                        dsOcrTimeoutMs, dsOcrMaxTokens, f);
         // 策略4：Excel → 已有 ExcelParser
         Function<File, DocumentReader> excelReader = f -> new ExcelParser(f);
 

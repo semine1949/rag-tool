@@ -62,6 +62,8 @@ public class OpenAiClient {
     private static final String CHAT_PATH = "/chat/completions";
     /** 限流窗口大小（毫秒） */
     private static final long RATE_LIMIT_WINDOW_MS = 1000L;
+    /** OCR 默认输出 token 上限（调用方未显式指定时使用） */
+    private static final int DEFAULT_OCR_MAX_TOKENS = 4096;
 
     // ==================== 共享基础设施 ====================
 
@@ -268,12 +270,14 @@ public class OpenAiClient {
      * @param model     模型名称（如 {@code deepseek-ai/DeepSeek-OCR}）
      * @param content   文件/图片二进制数据
      * @param mimeType  媒体类型（如 {@code image/png}、{@code application/pdf}）
-     * @param timeoutMs 超时毫秒数（<=0 时使用默认 120000ms）
+     * @param timeoutMs 超时毫秒数（&lt;=0 时使用默认 120000ms）
+     * @param maxTokens 输出 token 上限（&lt;=0 时使用默认 {@value #DEFAULT_OCR_MAX_TOKENS}）。
+     *                  扫描件单页文字密集可传更大值（如 8192），避免长页文本被截断。
      * @return 识别出的完整文本
      * @throws IllegalStateException 调用失败时抛出
      */
     public String ocr(String baseUrl, String apiKey, String model,
-                      byte[] content, String mimeType, long timeoutMs) {
+                      byte[] content, String mimeType, long timeoutMs, int maxTokens) {
         long timeout = timeoutMs > 0 ? timeoutMs : 120_000L;
 
         // OCR 使用独立 OkHttpClient，超时更长
@@ -320,7 +324,7 @@ public class OpenAiClient {
             reqBody.put("model", model);
             reqBody.put("messages", messages);
             reqBody.put("temperature", 0);
-            reqBody.put("max_tokens", 4096);
+            reqBody.put("max_tokens", maxTokens > 0 ? maxTokens : DEFAULT_OCR_MAX_TOKENS);
 
             String url = buildUrl(baseUrl, CHAT_PATH);
             String jsonBody = objectMapper.writeValueAsString(reqBody);

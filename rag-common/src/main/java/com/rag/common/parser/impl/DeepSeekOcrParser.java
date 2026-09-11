@@ -51,21 +51,24 @@ public class DeepSeekOcrParser implements DocumentReader {
 
     /** 统一 OpenAI 兼容客户端 */
     private final OpenAiClient openAiClient;
-    /** OCR 配置：baseUrl / apiKey / model / timeoutMs */
+    /** OCR 配置：baseUrl / apiKey / model / timeoutMs / maxTokens */
     private final String ocrBaseUrl;
     private final String ocrApiKey;
     private final String ocrModel;
     private final long ocrTimeoutMs;
+    /** OCR 输出 token 上限（<=0 时由 OpenAiClient 回落默认值） */
+    private final int ocrMaxTokens;
     private final File file;
 
     public DeepSeekOcrParser(OpenAiClient openAiClient,
                              String ocrBaseUrl, String ocrApiKey, String ocrModel, long ocrTimeoutMs,
-                             File file) {
+                             int ocrMaxTokens, File file) {
         this.openAiClient = openAiClient;
         this.ocrBaseUrl = ocrBaseUrl;
         this.ocrApiKey = ocrApiKey;
         this.ocrModel = ocrModel;
         this.ocrTimeoutMs = ocrTimeoutMs;
+        this.ocrMaxTokens = ocrMaxTokens;
         this.file = file;
     }
 
@@ -74,7 +77,8 @@ public class DeepSeekOcrParser implements DocumentReader {
         try {
             byte[] bytes = Files.readAllBytes(file.toPath());
             String ext = getExtension(file.getName());
-            String text = openAiClient.ocr(ocrBaseUrl, ocrApiKey, ocrModel, bytes, mimeOf(ext), ocrTimeoutMs);
+            String text = openAiClient.ocr(ocrBaseUrl, ocrApiKey, ocrModel, bytes, mimeOf(ext),
+                    ocrTimeoutMs, ocrMaxTokens);
             if (text.isEmpty()) {
                 log.warn("DeepSeek-OCR 未识别到文本: {}", file.getName());
             }
