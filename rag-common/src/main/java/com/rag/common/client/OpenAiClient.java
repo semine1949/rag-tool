@@ -65,6 +65,22 @@ public class OpenAiClient {
     /** OCR 默认输出 token 上限（调用方未显式指定时使用） */
     private static final int DEFAULT_OCR_MAX_TOKENS = 4096;
 
+    /**
+     * OCR 指令模板（DeepSeek-OCR 专用协议）。
+     * <p>
+     * <b>必须</b>带 {@code <image>} 占位前缀，否则服务端不会把 image_url 编码进上下文，
+     * 模型会"盲答"并输出 {@code }}、}}]}}]} 等括号幻觉（实测 prompt_tokens 恒为 949 与图片无关）。
+     * {@code <|grounding|>} 为保留版面布局的识别模式，输出行尾附带 {@code [[x1, y1, x2, y2]]} 坐标标记。
+     * </p>
+     */
+    private static final String OCR_PROMPT = "<image>\n<|grounding|>OCR this image.";
+
+    /**
+     * grounding 坐标标记正则：形如 {@code [[692, 68, 880, 82]]}，输出后必须剥离。
+     */
+    private static final java.util.regex.Pattern OCR_GROUNDING_BOX_PATTERN =
+            java.util.regex.Pattern.compile("\\[\\[\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+\\s*\\]\\]");
+
     // ==================== 共享基础设施 ====================
 
     /** 通用 OkHttpClient（连接/读取超时 30s/60s，适用于 Embedding 和 Rerank） */
@@ -264,6 +280,15 @@ public class OpenAiClient {
      * 将图片/文档以 base64 data URL 传入多模态模型，由远程模型渲染并识别文本。
      * 使用独立超时控制的 OkHttpClient（OCR 模型响应可能较慢，默认 120s）。
      * </p>
+     * <p>
+     * <b>请求体遵循 DeepSeek-OCR 专用协议</b>（三处关键约束，缺一即导致模型"盲答"输出括号幻觉）：
+     * <ol>
+     *     <li>text 指令必须为 {@link #OCR_PROMPT}，即以 {@code <image>} 占位符开头</li>
+     *     <li>content 数组中 <b>image 必须排在 text 之前</b></li>
+     *     <li><b>不发送 system 消息</b>（官方示例无 system）</li>
+     * </ol>
+     * 返回值已由 {@link #cleanOcrText(String)} 剥离 grounding 坐标标记与特殊标记。
+     * </p>
      *
      * @param baseUrl   API Base URL
      * @param apiKey    API Key
@@ -273,7 +298,7 @@ public class OpenAiClient {
      * @param timeoutMs 超时毫秒数（&lt;=0 时使用默认 120000ms）
      * @param maxTokens 输出 token 上限（&lt;=0 时使用默认 {@value #DEFAULT_OCR_MAX_TOKENS}）。
      *                  扫描件单页文字密集可传更大值（如 8192），避免长页文本被截断。
-     * @return 识别出的完整文本
+     * @return 识别出的完整文本（已清洗标记，无内容时为空串）
      * @throws IllegalStateException 调用失败时抛出
      */
     public String ocr(String baseUrl, String apiKey, String model,
@@ -287,23 +312,13 @@ public class OpenAiClient {
                 .build();
 
         String dataUrl = "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(content);
-        String prompt = "You are a precise OCR engine. Extract ALL text from the provided image or document, "
-                + "preserving the reading order and layout as much as possible. "
-                + "Output only the extracted text, without any commentary.";
 
         try {
             // 构造 messages 数组
-            Map<String, Object> systemMsg = new LinkedHashMap<>();
-            systemMsg.put("role", "system");
-            systemMsg.put("content", "You are a professional OCR assistant.");
-
+            // 注：DeepSeek-OCR 官方示例不含 system 消息，此处不再发送 system 角色，避免干扰专用指令解析
             List<Map<String, Object>> userContent = new ArrayList<>();
 
-            Map<String, Object> textPart = new LinkedHashMap<>();
-            textPart.put("type", "text");
-            textPart.put("text", prompt);
-            userContent.add(textPart);
-
+            // 顺序敏感：image 必须排在 text 之前，且 text 为 <image> 前缀的专用指令
             Map<String, Object> imageUrlObj = new LinkedHashMap<>();
             imageUrlObj.put("url", dataUrl);
 
@@ -312,12 +327,16 @@ public class OpenAiClient {
             imagePart.put("image_url", imageUrlObj);
             userContent.add(imagePart);
 
+            Map<String, Object> textPart = new LinkedHashMap<>();
+            textPart.put("type", "text");
+            textPart.put("text", OCR_PROMPT);
+            userContent.add(textPart);
+
             Map<String, Object> userMsg = new LinkedHashMap<>();
             userMsg.put("role", "user");
             userMsg.put("content", userContent);
 
             List<Map<String, Object>> messages = new ArrayList<>();
-            messages.add(systemMsg);
             messages.add(userMsg);
 
             Map<String, Object> reqBody = new LinkedHashMap<>();
@@ -335,7 +354,11 @@ public class OpenAiClient {
 
             try (Response resp = ocrClient.newCall(rb.build()).execute()) {
                 if (!resp.isSuccessful() || resp.body() == null) {
-                    throw new IllegalStateException("OCR 调用失败: HTTP " + resp.code());
+                    // 非 2xx 时必须把服务端响应体读出来：SiliconFlow 会返回 {"message": "...", "code": ...}，
+                    // 否则真实的失败原因（如 max_tokens 超上下文、图片过大）会被丢弃，只剩 "HTTP 400" 无法排查。
+                    String errBody = resp.body() != null ? resp.body().string() : "";
+                    throw new IllegalStateException(
+                            "OCR 调用失败: HTTP " + resp.code() + ", body=" + truncate(errBody, 500));
                 }
                 ChatResponse chatResp = objectMapper.readValue(resp.body().string(), ChatResponse.class);
 
@@ -350,13 +373,43 @@ public class OpenAiClient {
                     throw new IllegalStateException("OCR 返回消息为空");
                 }
                 String result = choice.message.content;
-                return result != null ? result.trim() : "";
+                return cleanOcrText(result);
             }
         } catch (IOException e) {
             throw new IllegalStateException("OCR 网络异常: " + e.getMessage(), e);
         } catch (Exception e) {
             throw new IllegalStateException("OCR 调用异常: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 清洗 OCR 原始输出，剥离 DeepSeek-OCR 专用协议产生的标记，只保留正文。
+     * <p>
+     * 处理内容：
+     * <ol>
+     *     <li>剥离 grounding 坐标标记 {@code [[x1, y1, x2, y2]]}（保留版面模式的行尾坐标）</li>
+     *     <li>剥离引用标记 {@code <|ref|>...<|/ref|>}，仅保留其间文字</li>
+     *     <li>剥离其它残留特殊标记 {@code <|grounding|>}、{@code <|det|>} 等</li>
+     *     <li>压缩连续空白行，去除首尾空白</li>
+     * </ol>
+     *
+     * @param raw 模型原始输出（可能为 null）
+     * @return 清洗后的纯文本正文；无内容时返回空串（绝不返回 null）
+     */
+    private String cleanOcrText(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return "";
+        }
+        String text = raw;
+        // 1. 剥离 grounding 坐标标记 [[x1, y1, x2, y2]]
+        text = OCR_GROUNDING_BOX_PATTERN.matcher(text).replaceAll("");
+        // 2. 剥离 <|ref|>文字<|/ref|>，保留其中文字
+        text = text.replaceAll("<\\|ref\\|>(.*?)<\\|/ref\\|>", "$1");
+        // 3. 剥离其它残留特殊标记：开标签 <|grounding|>、<|det|> 与闭标签 <|/det|>、<|/ref|> 等
+        text = text.replaceAll("<\\|/?[a-zA-Z_]+\\|>", "");
+        // 4. 压缩 3 个以上连续换行为 2 个，并去除首尾空白
+        text = text.replaceAll("\\n{3,}", "\n\n");
+        return text.trim();
     }
 
     // ==================== 限流实现（仅 Rerank 使用） ====================
@@ -417,6 +470,20 @@ public class OpenAiClient {
             arr[i] = list.get(i).floatValue();
         }
         return arr;
+    }
+
+    /**
+     * 截断过长文本，避免错误信息/日志被超长响应体淹没。
+     *
+     * @param s   原文本（可为 null）
+     * @param max 最大保留长度
+     * @return 截断后的文本（null 转空串）
+     */
+    private String truncate(String s, int max) {
+        if (s == null) {
+            return "";
+        }
+        return s.length() <= max ? s : s.substring(0, max) + "...(truncated)";
     }
 
     /**

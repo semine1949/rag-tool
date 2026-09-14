@@ -66,7 +66,7 @@ mybatis:
 rag:
   # ---------- Weaviate向量库配置 ----------
   weaviate:
-    url: http://192.168.71.15:8080
+    url: http://192.168.71.16:8080
     # 访问令牌（Weaviate 开启鉴权时填写，否则留空）
     token: ${RAG_WEAVIATE_TOKEN:}
     collection: Document_V1

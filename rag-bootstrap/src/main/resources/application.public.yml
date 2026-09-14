@@ -170,5 +170,8 @@ rag:
     timeout-ms: 120000
     # 通用 OCR 输出 token 上限（内嵌图 / 非 PDF 整份回退 OCR 使用）
     max-tokens: 4096
-    # 扫描件 PDF 逐页 OCR 的页输出 token 上限（单页文字密集，放大避免长页被截断）
-    page-max-tokens: 8192
+    # 扫描件 PDF 逐页 OCR 的页输出 token 上限。
+    # ⚠ 约束：DeepSeek-OCR 总上下文（输入+输出）仅 8192，而单页 A4 图片输入约 1500~2500 vision token，
+    #    故输出上限不可设为 8192（8192 + 图片输入 > 8192 → 服务端必然返回 HTTP 400）。
+    #    4096 可覆盖文字密集页（约 2000~3000 token），且 4096 + 输入 ≈ 5500~6600 < 8192，安全。
+    page-max-tokens: 4096

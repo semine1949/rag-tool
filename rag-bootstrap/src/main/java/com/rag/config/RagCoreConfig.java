@@ -95,8 +95,14 @@ public class RagCoreConfig implements WebMvcConfigurer {
     @Value("${rag.deepseek-ocr.max-tokens:4096}")
     private int dsOcrMaxTokens;
 
-    /** 扫描件 PDF 逐页 OCR 的页输出 token 上限（单页文字密集，默认放大到 8192） */
-    @Value("${rag.deepseek-ocr.page-max-tokens:8192}")
+    /**
+     * 扫描件 PDF 逐页 OCR 的页输出 token 上限。
+     * <p>
+     * 受 DeepSeek-OCR 总上下文（输入+输出）8192 约束：单页图片输入约占 1500~2500 vision token，
+     * 若输出上限设为 8192 则必然触发 HTTP 400，故默认与通用值一致取 4096。
+     * </p>
+     */
+    @Value("${rag.deepseek-ocr.page-max-tokens:4096}")
     private int dsOcrPageMaxTokens;
 
     @Bean

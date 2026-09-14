@@ -49,6 +49,16 @@ public class TikaOcrMixedParser implements DocumentReader {
     /** 统一的 PDF 逐页 OCR 内容类型标记 */
     private static final String PDF_PAGE_OCR = "pdf_page_ocr";
 
+    /**
+     * OCR 输出被视为「有实际正文」的最小有效字符数。
+     * <p>
+     * 剥离标点/括号/空白后剩余字符数低于此值时，判定为模型幻觉噪声（如 {@code }}、{@code []}）并丢弃。
+     * 取 5 的理由：正常单页 OCR 正文远大于 5 字；而括号幻觉剥离后通常为 0~1 字，阈值 5 可安全区分二者，
+     * 同时留出容错余量（避免把「答案：D」这类极短但有效的内容误杀）。
+     * </p>
+     */
+    private static final int MIN_MEANINGFUL_OCR_CHARS = 5;
+
     private static final Map<String, String> EXT_MIME_MAP = Map.of(
             "pdf", "application/pdf",
             "doc", "application/msword",
@@ -119,7 +129,11 @@ public class TikaOcrMixedParser implements DocumentReader {
                     try {
                         String ocrText = openAiClient.ocr(ocrBaseUrl, ocrApiKey, ocrModel,
                                 img.bytes, img.mimeType, ocrTimeoutMs, ocrMaxTokens);
-                        if (!ocrText.isEmpty()) {
+                        if (!hasMeaningfulOcrText(ocrText)) {
+                            log.warn("内嵌图片 OCR 无有效内容 (index={}, file={}): {}", i, file.getName(), ocrText);
+                            continue;
+                        }
+                        {
                             Map<String, Object> imgMeta = buildBaseMetadata("image_ocr");
                             imgMeta.put("contentType", "image_ocr");
                             imgMeta.put("imageIndex", i);
@@ -172,8 +186,8 @@ public class TikaOcrMixedParser implements DocumentReader {
             try {
                 String ocrText = openAiClient.ocr(ocrBaseUrl, ocrApiKey, ocrModel,
                         page.getPngBytes(), "image/png", ocrTimeoutMs, ocrPageMaxTokens);
-                if (ocrText.isEmpty()) {
-                    log.warn("扫描件 PDF 页面 OCR 无产出 (page={}, file={}): {}",
+                if (!hasMeaningfulOcrText(ocrText)) {
+                    log.warn("扫描件 PDF 页面 OCR 无有效内容 (page={}, file={}): {}",
                             page.getPageIndex(), file.getName(), ocrText);
                     continue;
                 }
@@ -204,7 +218,7 @@ public class TikaOcrMixedParser implements DocumentReader {
             byte[] fileBytes = Files.readAllBytes(file.toPath());
             String ocrText = openAiClient.ocr(ocrBaseUrl, ocrApiKey, ocrModel,
                     fileBytes, mime, ocrTimeoutMs, ocrMaxTokens);
-            if (!ocrText.isEmpty()) {
+            if (hasMeaningfulOcrText(ocrText)) {
                 Map<String, Object> fallbackMeta = buildBaseMetadata("fallback_ocr");
                 fallbackMeta.put("contentType", "fallback_ocr");
                 documents.add(new Document(UUID.randomUUID().toString(), ocrText, fallbackMeta));
@@ -234,6 +248,27 @@ public class TikaOcrMixedParser implements DocumentReader {
     private String getExtension(String fileName) {
         int i = fileName.lastIndexOf('.');
         return i > 0 ? fileName.substring(i + 1).toLowerCase() : "";
+    }
+
+    /**
+     * 判断 OCR 输出是否为「有实际意义的正文」。
+     * <p>
+     * 背景：DeepSeek-OCR 等模型在输入未被正确编码、或图片信息量过低时，不会返回空串，
+     * 而是输出 {@code }}、{@code }}]}}]}、{@code []}、{@code {}} 之类的<b>括号幻觉</b>占位内容。
+     * 仅用 {@code isEmpty()} 判空会让这些噪声被当成有效文本入库，污染后续切片与向量化。
+     * </p>
+     * 判定策略：剥离所有标点、括号、转义符与空白后，剩余字符数 &ge; {@value #MIN_MEANINGFUL_OCR_CHARS} 才视为有效。
+     *
+     * @param ocrText OCR 原始输出（可为 null）
+     * @return true=包含实际正文内容；false=空或纯符号噪声
+     */
+    private boolean hasMeaningfulOcrText(String ocrText) {
+        if (ocrText == null || ocrText.isBlank()) {
+            return false;
+        }
+        // 剥离空白、各种括号、转义符与常见标点，仅保留可能承载语义的字符
+        String meaningful = ocrText.replaceAll("[\\s\\{\\}\\[\\]\\(\\)<>|_\\-=+*·•\\\\,;:.\"'`~^/、，。：；！？…—－]", "");
+        return meaningful.length() >= MIN_MEANINGFUL_OCR_CHARS;
     }
 
     // -------------------------------------------------------------------------

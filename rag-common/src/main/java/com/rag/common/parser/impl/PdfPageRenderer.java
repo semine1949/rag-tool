@@ -40,24 +40,31 @@ public class PdfPageRenderer {
     /** 单份 PDF 渲染的最大页数（默认值，硬编码；超出部分跳过并告警，不中断整份解析） */
     public static final int DEFAULT_MAX_PAGES = 100;
 
-    /** 逐页渲染 DPI（默认值，硬编码；150 为清晰度与图片体积的平衡点） */
-    public static final float DEFAULT_RENDER_DPI = 150f;
+    /**
+     * 逐页渲染 DPI（默认值，硬编码）。
+     * <p>
+     * 取 120 的原因：A4@150dpi ≈ 1240×1754 px，PNG 约 1~3 MB，base64 后膨胀 33%，
+     * 既占用大量 vision token 又易触发请求体大小限制；降至 120dpi 后 ≈ 992×1403 px，
+     * PNG 约 0.7~1.5 MB，vision token 同步下降约 35%，而扫描件多为规则印刷体，120dpi 足够识别。
+     * </p>
+     */
+    public static final float DEFAULT_RENDER_DPI = 120f;
 
-    /** 渲染 DPI（150 可满足扫描件 OCR 清晰度，同时避免单页图片过大） */
+    /** 渲染 DPI（120 可满足扫描件 OCR 清晰度，同时显著压缩单页图片体积与 vision token） */
     private final float renderDpi;
 
     /** 最大渲染页数，超出部分跳过 */
     private final int maxPages;
 
     /**
-     * 使用默认参数构造（DPI=150，最多 100 页）。
+     * 使用默认参数构造（DPI=120，最多 100 页）。
      */
     public PdfPageRenderer() {
         this(DEFAULT_RENDER_DPI, DEFAULT_MAX_PAGES);
     }
 
     /**
-     * @param renderDpi 渲染 DPI（&lt;=0 时回落 150）
+     * @param renderDpi 渲染 DPI（&lt;=0 时回落 120）
      * @param maxPages  最大渲染页数（&lt;=0 时回落 100）
      */
     public PdfPageRenderer(float renderDpi, int maxPages) {
