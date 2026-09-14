@@ -109,10 +109,13 @@ public class RagStorageService {
      * @param changeType     变更类型（可空）
      * @param chunkStrategy  分片策略名（如 TEXT_MODEL / text-model，可空，未知回退 text-model）
      * @param splitterConfig 分片参数载体（可空，null 时采用默认参数）
+     * @param modelName      解析模型名（可空）。传 {@code minerU} 时强制使用 MinerU 解析器，
+     *                       覆盖默认的扩展名路由；为空时按扩展名 + 配置自动路由
      * @return 落库结果
      */
     public FileProcessResult processFile(MultipartFile file, Long kbId, String changeType,
-                                         String chunkStrategy, SplitterConfig splitterConfig) {
+                                         String chunkStrategy, SplitterConfig splitterConfig,
+                                         String modelName) {
         if (file == null || file.isEmpty()) {
             throw new RagException("RAG_FILE_EMPTY", "上传文件为空");
         }
@@ -129,11 +132,11 @@ public class RagStorageService {
             File tempFile = tempPath.toFile();
 
             String contentType = detectContentType(originalFilename);
-            log.info("开始处理文件: {}, 类型: {}, 知识库: {}, 租户: {}",
-                    originalFilename, contentType, kbId, tenantId);
+            log.info("开始处理文件: {}, 类型: {}, 知识库: {}, 租户: {}, 指定解析模型: {}",
+                    originalFilename, contentType, kbId, tenantId, modelName);
 
-            // ===== 1. 解析文件 =====
-            List<Document> docs = parseFactory.parse(tempFile);
+            // ===== 1. 解析文件（按 modelName 强制覆盖 / 扩展名 + 配置自动路由） =====
+            List<Document> docs = parseFactory.parse(tempFile, modelName);
             String fullText = docs.get(0).getText();
             if (fullText == null || fullText.isBlank()) {
                 throw new RagException("RAG_EMPTY_TEXT", "解析后文本为空: " + originalFilename);
@@ -408,13 +411,24 @@ public class RagStorageService {
 
     // ==================== 批量处理 ====================
 
+    /**
+     * 批量处理多个上传文件（异步串行执行，单个文件失败不阻断后续文件）。
+     *
+     * @param files          上传文件列表
+     * @param kbId           知识库 ID
+     * @param chunkStrategy  分片策略名（可空，回退 text-model）
+     * @param splitterConfig 分片参数载体（可空，采用默认参数）
+     * @param modelName      解析模型名（可空）。传 {@code minerU} 时全部文件强制走 MinerU 解析器
+     * @return 各文件处理结果
+     */
     public CompletableFuture<List<FileProcessResult>> batchProcessFiles(List<MultipartFile> files, Long kbId,
-                                                                          String chunkStrategy, SplitterConfig splitterConfig) {
+                                                                          String chunkStrategy, SplitterConfig splitterConfig,
+                                                                          String modelName) {
         return CompletableFuture.supplyAsync(() -> {
             List<FileProcessResult> results = new ArrayList<>();
             for (MultipartFile file : files) {
                 try {
-                    results.add(processFile(file, kbId, null, chunkStrategy, splitterConfig));
+                    results.add(processFile(file, kbId, null, chunkStrategy, splitterConfig, modelName));
                 } catch (Exception e) {
                     log.error("批量处理文件失败: {}", e.getMessage());
                     results.add(FileProcessResult.builder().success(false)
@@ -441,7 +455,8 @@ public class RagStorageService {
             if (f.isFile()) {
                 try {
                     MultipartFile mp = new InMemoryMultipartFile(f.getName(), Files.readAllBytes(f.toPath()), "application/octet-stream");
-                    results.add(processFile(mp, kbId, null, null, null));
+                    // 目录导入不指定解析模型，按扩展名 + 配置自动路由
+                    results.add(processFile(mp, kbId, null, null, null, null));
                 } catch (IOException e) {
                     results.add(FileProcessResult.builder().success(false).message(e.getMessage()).build());
                 }

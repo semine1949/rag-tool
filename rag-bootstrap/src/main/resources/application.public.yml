@@ -139,39 +139,11 @@ spring:
             timeout-ms: 120000
 
 # ============================================================================
-# 以下为兼容旧链路保留的配置（KbConfigService 解析 vectorDim / OCR parser 读取）
-# 后续将逐步迁移到 spring.ai.platform.models.extensions 后删除
+# 说明：本文件现在【只保留大模型配置清单】（spring.ai.platform.models）。
+#
+# 以下非「大模型清单」的运行参数已于本次迁移至 application.yml（唯一来源），
+# 本文件不再保留，请勿再写回，否则会因 application.yml 优先级更高而"改了不生效"：
+#   - rag.embedding.*      （Embedding 兼容配置，KbConfigService / AdminController 读取）
+#   - rag.deepseek-ocr.*   （OCR 直连参数，RagCoreConfig 读取）
+#   - rag.parser.*         （PDF 解析器路由开关，RagCoreConfig 读取）
 # ============================================================================
-rag:
-  # ---------- Embedding 向量维度（供 Weaviate 集合配置，与模型输出维度一致） ----------
-  embedding:
-    type: bge-m3
-    bge-m3:
-      api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
-      base-url: https://api.siliconflow.cn/v1
-      model: BAAI/bge-m3
-      dim: 1024
-    tongyi:
-      api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
-      base-url: https://api.siliconflow.cn/v1
-      model: Qwen/Qwen3-Embedding-0.6B
-      dim: 1024
-    openai:
-      api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-      base-url: https://api.openai.com/v1
-      model: text-embedding-3-small
-      dim: 1536
-
-  # ---------- OCR 识别模型（DeepSeekOcrParser / TikaOcrMixedParser 直连读取） ----------
-  deepseek-ocr:
-    api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
-    base-url: https://api.siliconflow.cn/v1
-    model: deepseek-ai/DeepSeek-OCR
-    timeout-ms: 120000
-    # 通用 OCR 输出 token 上限（内嵌图 / 非 PDF 整份回退 OCR 使用）
-    max-tokens: 4096
-    # 扫描件 PDF 逐页 OCR 的页输出 token 上限。
-    # ⚠ 约束：DeepSeek-OCR 总上下文（输入+输出）仅 8192，而单页 A4 图片输入约 1500~2500 vision token，
-    #    故输出上限不可设为 8192（8192 + 图片输入 > 8192 → 服务端必然返回 HTTP 400）。
-    #    4096 可覆盖文字密集页（约 2000~3000 token），且 4096 + 输入 ≈ 5500~6600 < 8192，安全。
-    page-max-tokens: 4096

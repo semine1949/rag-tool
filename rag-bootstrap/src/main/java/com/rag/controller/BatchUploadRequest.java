@@ -9,6 +9,8 @@ public class BatchUploadRequest {
     private Long kbId;
     /** 分片策略名（text-model / hierarchical-model），可空 */
     private String chunkStrategy;
+    /** 解析模型名（可选）：传 minerU 时强制使用 MinerU 解析器，覆盖扩展名路由 */
+    private String modelName;
 
     // text-model 参数（可空）
     private String delimiter;
@@ -27,6 +29,9 @@ public class BatchUploadRequest {
 
     public String getChunkStrategy() { return chunkStrategy; }
     public void setChunkStrategy(String chunkStrategy) { this.chunkStrategy = chunkStrategy; }
+
+    public String getModelName() { return modelName; }
+    public void setModelName(String modelName) { this.modelName = modelName; }
 
     public String getDelimiter() { return delimiter; }
     public void setDelimiter(String delimiter) { this.delimiter = delimiter; }

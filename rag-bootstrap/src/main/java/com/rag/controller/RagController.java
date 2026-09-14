@@ -44,17 +44,21 @@ public class RagController {
      * 单文件上传入库（默认兜底接口）。
      * <p>file + kbId，可选 chunkStrategy（text-model / hierarchical-model）。未指定或为 null 时
      * 回退 text-model，并使用默认参数分块。</p>
+     * <p>可选 modelName：传 {@code minerU} 时强制使用 MinerU 解析器（覆盖扩展名路由）；
+     * 不传时按扩展名 + 配置 {@code rag.parser.pdf-provider} 自动路由。</p>
      */
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadFile(
             @RequestPart("file") MultipartFile file,
             @RequestParam("kbId") Long kbId,
-            @RequestParam(value = "chunkStrategy", required = false) String chunkStrategy) {
+            @RequestParam(value = "chunkStrategy", required = false) String chunkStrategy,
+            @RequestParam(value = "modelName", required = false) String modelName) {
         try {
             Long userId = requireAuth();
             kbAccessService.checkUploadPermission(userId, kbId);
             // 默认兜底：config 传 null，工厂按 chunkStrategy 采用默认参数构造 splitter
-            FileProcessResult result = ragStorageService.processFile(file, kbId, null, chunkStrategy, null);
+            FileProcessResult result = ragStorageService.processFile(
+                    file, kbId, null, chunkStrategy, null, modelName);
             return ResponseEntity.ok(Map.of("code", 200, "data", result));
         } catch (Exception e) {
             log.error("文件上传处理失败", e);
@@ -67,6 +71,7 @@ public class RagController {
      * <p>上传文件 + kbId，按 text-model 策略分块落库（解析→分块→向量化→入库）。
      * 通过 {@link SplitterConfig} 按用户传入的 delimiter / maxTokens / chunkOverlap 构造参数，
      * 未传入的字段采用默认值。</p>
+     * <p>可选 modelName：传 {@code minerU} 时强制使用 MinerU 解析器。</p>
      */
     @PostMapping(value = "/upload/text-model", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadTextModel(
@@ -74,7 +79,8 @@ public class RagController {
             @RequestParam("kbId") Long kbId,
             @RequestParam(value = "delimiter", required = false) String delimiter,
             @RequestParam(value = "maxTokens", required = false) Integer maxTokens,
-            @RequestParam(value = "chunkOverlap", required = false) Integer chunkOverlap) {
+            @RequestParam(value = "chunkOverlap", required = false) Integer chunkOverlap,
+            @RequestParam(value = "modelName", required = false) String modelName) {
         try {
             Long userId = requireAuth();
             kbAccessService.checkUploadPermission(userId, kbId);
@@ -84,7 +90,7 @@ public class RagController {
             config.setMaxTokens(maxTokens);
             config.setChunkOverlap(chunkOverlap);
             FileProcessResult result = ragStorageService.processFile(
-                    file, kbId, null, "TEXT_MODEL", config);
+                    file, kbId, null, "TEXT_MODEL", config, modelName);
             return ResponseEntity.ok(Map.of("code", 200, "data", result));
         } catch (Exception e) {
             log.error("text-model 上传落库失败", e);
@@ -97,6 +103,7 @@ public class RagController {
      * <p>上传文件 + kbId，按 hierarchical-model 策略分块落库（解析→父块+子块→向量化→入库）。
      * 通过 {@link SplitterConfig} 按用户传入的 parentSeparator / parentMaxTokens / childSeparator /
      * childMaxTokens / parentMode 构造参数，未传入的字段采用默认值。</p>
+     * <p>可选 modelName：传 {@code minerU} 时强制使用 MinerU 解析器。</p>
      */
     @PostMapping(value = "/upload/hierarchical-model", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadHierarchicalModel(
@@ -106,7 +113,8 @@ public class RagController {
             @RequestParam(value = "parentMaxTokens", required = false) Integer parentMaxTokens,
             @RequestParam(value = "childSeparator", required = false) String childSeparator,
             @RequestParam(value = "childMaxTokens", required = false) Integer childMaxTokens,
-            @RequestParam(value = "parentMode", required = false) String parentMode) {
+            @RequestParam(value = "parentMode", required = false) String parentMode,
+            @RequestParam(value = "modelName", required = false) String modelName) {
         try {
             Long userId = requireAuth();
             kbAccessService.checkUploadPermission(userId, kbId);
@@ -118,7 +126,7 @@ public class RagController {
             config.setChildMaxTokens(childMaxTokens);
             config.setParentMode(parentMode);
             FileProcessResult result = ragStorageService.processFile(
-                    file, kbId, null, "HIERARCHICAL_MODEL", config);
+                    file, kbId, null, "HIERARCHICAL_MODEL", config, modelName);
             return ResponseEntity.ok(Map.of("code", 200, "data", result));
         } catch (Exception e) {
             log.error("hierarchical-model 上传落库失败", e);
@@ -143,9 +151,11 @@ public class RagController {
             kbAccessService.checkUploadPermission(userId, kbId);
             // 依据 request 中用户传参构造 SplitterConfig（未传入字段为 null，由 splitter 采用默认值）
             String chunkStrategy = request != null ? request.getChunkStrategy() : null;
+            // 解析模型名：传 minerU 时整批文件强制走 MinerU 解析器
+            String modelName = request != null ? request.getModelName() : null;
             SplitterConfig config = buildSplitterConfig(request);
             CompletableFuture<List<FileProcessResult>> future =
-                    ragStorageService.batchProcessFiles(files, kbId, chunkStrategy, config);
+                    ragStorageService.batchProcessFiles(files, kbId, chunkStrategy, config, modelName);
             return ResponseEntity.ok(Map.of("code", 200, "msg", "批量任务已提交"));
         } catch (Exception e) {
             log.error("批量上传处理失败", e);

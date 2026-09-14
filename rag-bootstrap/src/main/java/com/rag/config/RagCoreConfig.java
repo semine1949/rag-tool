@@ -13,6 +13,8 @@ import com.rag.chat.config.ChatProperties;
 import com.rag.common.parser.DocumentParseFactory;
 import com.rag.common.parser.impl.*;
 import org.mybatis.spring.annotation.MapperScan;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.DocumentReader;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.beans.factory.annotation.Value;
@@ -44,6 +46,8 @@ import java.util.function.Function;
 @EnableConfigurationProperties({AiModelProperties.class, ChatProperties.class})
 @MapperScan("com.rag.auth.mapper")
 public class RagCoreConfig implements WebMvcConfigurer {
+
+    private static final Logger log = LoggerFactory.getLogger(RagCoreConfig.class);
 
     // ==================== 线程池配置 ====================
 
@@ -105,23 +109,33 @@ public class RagCoreConfig implements WebMvcConfigurer {
     @Value("${rag.deepseek-ocr.page-max-tokens:4096}")
     private int dsOcrPageMaxTokens;
 
+    /**
+     * PDF 解析器提供方：{@code mineru}（默认）或 {@code tika-mixed}。
+     * <p>用于灰度与快速回退：当 MinerU 未就绪或异常时，将配置切换为 tika-mixed 即可
+     * 恢复原有「Tika 文本 + 内嵌图 OCR + 扫描件逐页 OCR」能力，无需改代码重启即可生效。</p>
+     */
+    @Value("${rag.parser.pdf-provider:mineru}")
+    private String pdfProvider;
+
     @Bean
     public DocumentParseFactory documentParseFactory(OpenAiClient openAiClient) {
         Map<com.rag.common.enums.FileTypeEnum, Function<File, DocumentReader>> suppliers =
                 new EnumMap<>(com.rag.common.enums.FileTypeEnum.class);
 
-        // 策略1：文本类型 → Apache Tika
+        // 策略1：文本类型 → Apache Tika（纯文本抽取，不做内嵌图 OCR）
         Function<File, DocumentReader> tikaReader = f -> new TikaDocumentReader(new FileSystemResource(f));
-        // 策略2：文本+图片混合文档 → Tika 文本提取 + 内嵌图片多模态 OCR
+        // 策略2：文本+图片混合文档（图文混排）→ Tika 文本提取 + 内嵌图片多模态 OCR
         Function<File, DocumentReader> mixedReader = f ->
                 new TikaOcrMixedParser(openAiClient, dsOcrBaseUrl, dsOcrApiKey, dsOcrModel,
                         dsOcrTimeoutMs, dsOcrMaxTokens, dsOcrPageMaxTokens, f);
-        // 策略3：纯图片 → 多模态 OCR
+        // 策略3：纯图片 → 多模态 OCR（纯 PNG 等图片的默认解析器）
         Function<File, DocumentReader> ocrReader = f ->
                 new DeepSeekOcrParser(openAiClient, dsOcrBaseUrl, dsOcrApiKey, dsOcrModel,
                         dsOcrTimeoutMs, dsOcrMaxTokens, f);
-        // 策略4：Excel → 已有 ExcelParser
+        // 策略4：Excel → 智能表格解析
         Function<File, DocumentReader> excelReader = f -> new ExcelParser(f);
+        // 策略5：MinerU → PDF 默认解析器（骨架），亦作为 modelName=minerU 时的强制覆盖器
+        Function<File, DocumentReader> mineruReader = f -> new MinerUParser(f);
 
         // 文本类型：TXT / MD / MARKDOWN / HTML / HTM
         suppliers.put(com.rag.common.enums.FileTypeEnum.TXT, tikaReader);
@@ -130,24 +144,30 @@ public class RagCoreConfig implements WebMvcConfigurer {
         suppliers.put(com.rag.common.enums.FileTypeEnum.HTML, tikaReader);
         suppliers.put(com.rag.common.enums.FileTypeEnum.HTM, tikaReader);
 
-        // 混合文档：PDF / DOC / DOCX / PPT / PPTX
-        suppliers.put(com.rag.common.enums.FileTypeEnum.PDF, mixedReader);
+        // 【变更】PDF：默认走 MinerU，可通过 rag.parser.pdf-provider=tika-mixed 回退
+        boolean useTikaMixedForPdf = "tika-mixed".equalsIgnoreCase(pdfProvider);
+        Function<File, DocumentReader> pdfReader = useTikaMixedForPdf ? mixedReader : mineruReader;
+        suppliers.put(com.rag.common.enums.FileTypeEnum.PDF, pdfReader);
+        log.info("PDF 解析器路由: rag.parser.pdf-provider={} → {}",
+                pdfProvider, useTikaMixedForPdf ? "TikaOcrMixedParser" : "MinerUParser");
+
+        // 【不变】图文混排：DOC / DOCX / PPT / PPTX → Tika 文本提取 + 内嵌图 OCR
         suppliers.put(com.rag.common.enums.FileTypeEnum.DOC, mixedReader);
         suppliers.put(com.rag.common.enums.FileTypeEnum.DOCX, mixedReader);
         suppliers.put(com.rag.common.enums.FileTypeEnum.PPT, mixedReader);
         suppliers.put(com.rag.common.enums.FileTypeEnum.PPTX, mixedReader);
 
-        // 纯图片：JPG / JPEG / PNG / BMP
+        // 【不变】纯图片：JPG / JPEG / PNG / BMP → DeepSeekOcrParser
         suppliers.put(com.rag.common.enums.FileTypeEnum.JPG, ocrReader);
         suppliers.put(com.rag.common.enums.FileTypeEnum.JPEG, ocrReader);
         suppliers.put(com.rag.common.enums.FileTypeEnum.PNG, ocrReader);
         suppliers.put(com.rag.common.enums.FileTypeEnum.BMP, ocrReader);
 
-        // Excel：XLS / XLSX
+        // 【不变】Excel：XLS / XLSX → ExcelParser
         suppliers.put(com.rag.common.enums.FileTypeEnum.XLSX, excelReader);
         suppliers.put(com.rag.common.enums.FileTypeEnum.XLS, excelReader);
 
-        return new DocumentParseFactory(suppliers);
+        return new DocumentParseFactory(suppliers, mineruReader);
     }
 
     // ==================== 分片策略工厂配置 ====================
