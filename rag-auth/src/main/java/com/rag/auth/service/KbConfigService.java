@@ -2,11 +2,11 @@ package com.rag.auth.service;
 
 import com.rag.auth.mapper.KnowledgeBaseMapper;
 import com.rag.common.entity.config.EmbeddingConfig;
-import com.rag.common.entity.config.EmbeddingProperties;
 import com.rag.common.entity.config.WeaviateCollectionConfig;
 import com.rag.common.entity.KnowledgeBase;
 import com.rag.common.enums.EmbeddingModelType;
 import com.rag.config.factory.VectorStoreRegistry;
+import com.rag.config.properties.AiModelProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -25,14 +25,19 @@ public class KbConfigService {
 
     private final KnowledgeBaseMapper kbMapper;
     private final VectorStoreRegistry vectorStoreRegistry;
-    private final EmbeddingProperties embeddingProperties;
+    /**
+     * 大模型统一配置（spring.ai.platform.models，来自 application.public.yml）。
+     * Embedding 的凭证/端点/模型名由模型段提供，向量维度取 {@code extensions.dim}，
+     * 取代原先独立的 rag.embedding 配置段（EmbeddingProperties 已删除）。
+     */
+    private final AiModelProperties aiModelProperties;
 
     public KbConfigService(KnowledgeBaseMapper kbMapper,
                            VectorStoreRegistry vectorStoreRegistry,
-                           EmbeddingProperties embeddingProperties) {
+                           AiModelProperties aiModelProperties) {
         this.kbMapper = kbMapper;
         this.vectorStoreRegistry = vectorStoreRegistry;
-        this.embeddingProperties = embeddingProperties;
+        this.aiModelProperties = aiModelProperties;
     }
 
     /**
@@ -118,22 +123,49 @@ public class KbConfigService {
         return resolveEmbeddingConfig(kb.getEmbeddingModel());
     }
 
+    /**
+     * 解析知识库的 Embedding 配置。
+     * <p>
+     * 配置来源统一为 {@code spring.ai.platform.models}（application.public.yml）：
+     * 先由知识库存储的模型标识推断 {@link EmbeddingModelType}，再映射为模型逻辑名
+     * （BGE_M3→bge-m3 / TONGYI→tongyi / OPENAI→openai，与各消费方
+     * {@code resolveEmbeddingModel()} 的映射保持一致），最后从对应模型段读取
+     * 端点、密钥、模型名与 {@code extensions.dim} 向量维度。
+     * </p>
+     * <p>模型段缺失时仅降级（对应字段为 null），不抛出异常，由上层日志观测。</p>
+     *
+     * @param embeddingModel 知识库存储的 Embedding 模型标识（可为空）
+     * @return Embedding 配置
+     */
     private EmbeddingConfig resolveEmbeddingConfig(String embeddingModel) {
         EmbeddingModelType modelType = resolveType(embeddingModel);
-        EmbeddingProperties.ModelProps p = switch (modelType) {
-            case BGE_M3 -> embeddingProperties.getBgeM3();
-            case OPENAI -> embeddingProperties.getOpenai();
-            case TONGYI -> embeddingProperties.getTongyi();
-        };
+        String logicalName = toLogicalModelName(modelType);
+        AiModelProperties.ModelConfig mc = aiModelProperties == null || aiModelProperties.getModels() == null
+                ? null : aiModelProperties.getModels().get(logicalName);
+        if (mc == null) {
+            log.warn("未找到 Embedding 模型配置 spring.ai.platform.models.{}, 向量维度将为空", logicalName);
+        }
+        // 模型名优先取知识库配置，其次回退模型清单中的 model-name
         String modelName = (embeddingModel != null && !embeddingModel.isBlank())
-                ? embeddingModel : p.getModel();
+                ? embeddingModel
+                : (mc != null ? mc.getModelName() : null);
         return EmbeddingConfig.builder()
                 .modelType(modelType)
                 .modelName(modelName)
-                .baseUrl(p.getBaseUrl())
-                .modelSource(p.getApiKey())
-                .vectorDim(p.getDim())
+                .baseUrl(mc != null ? mc.getBaseUrl() : null)
+                .modelSource(mc != null ? mc.getApiKey() : null)
+                // 向量维度：ModelConfig 无 dim 字段，故存于 extensions.dim
+                .vectorDim(mc != null ? mc.getExtensionInt("dim", null) : null)
                 .build();
+    }
+
+    /** 将 Embedding 模型类型映射为模型清单中的逻辑名（与 resolveEmbeddingModel 的映射一致）。 */
+    private static String toLogicalModelName(EmbeddingModelType modelType) {
+        return switch (modelType) {
+            case BGE_M3 -> "bge-m3";
+            case TONGYI -> "tongyi";
+            case OPENAI -> "openai";
+        };
     }
 
     private EmbeddingModelType resolveType(String embeddingModel) {

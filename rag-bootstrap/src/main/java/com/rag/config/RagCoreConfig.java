@@ -5,7 +5,6 @@ import com.rag.auth.mapper.*;
 import com.rag.auth.service.*;
 import com.rag.interceptor.JwtAuthInterceptor;
 import com.rag.common.chunker.ChunkStrategyFactory;
-import com.rag.common.entity.config.EmbeddingProperties;
 import com.rag.common.client.OpenAiClient;
 import com.rag.config.factory.VectorStoreRegistry;
 import com.rag.config.properties.AiModelProperties;
@@ -49,6 +48,16 @@ public class RagCoreConfig implements WebMvcConfigurer {
 
     private static final Logger log = LoggerFactory.getLogger(RagCoreConfig.class);
 
+    /**
+     * 大模型统一配置（spring.ai.platform.models，来自 application.public.yml）。
+     * <p>OCR 等模型凭证与 extensions 运行参数均由此读取，替代原多个 @Value 直连配置项。</p>
+     */
+    private final AiModelProperties aiModelProperties;
+
+    public RagCoreConfig(AiModelProperties aiModelProperties) {
+        this.aiModelProperties = aiModelProperties;
+    }
+
     // ==================== 线程池配置 ====================
 
     @Bean("ragTaskExecutor")
@@ -80,34 +89,64 @@ public class RagCoreConfig implements WebMvcConfigurer {
 
     // ==================== 文档解析器配置 ====================
 
-    @Value("${rag.deepseek-ocr.api-key:}")
-    private String dsOcrApiKey;
+    /** OCR 模型在 {@code spring.ai.platform.models} 中的逻辑名（与 application.public.yml 一致） */
+    private static final String OCR_MODEL_LOGICAL_NAME = "deepseek-ocr";
 
-    @Value("${rag.deepseek-ocr.base-url:}")
-    private String dsOcrBaseUrl;
+    /** OCR 请求超时默认值（毫秒），模型未配置 extensions.timeout-ms 时生效 */
+    private static final long DEFAULT_OCR_TIMEOUT_MS = 120000L;
 
-    @Value("${rag.deepseek-ocr.model:deepseek-ocr}")
-    private String dsOcrModel;
+    /** 通用 OCR 输出 token 上限默认值，模型未配置 extensions.max-tokens 时生效 */
+    private static final int DEFAULT_OCR_MAX_TOKENS = 4096;
 
-    @Value("${rag.deepseek-ocr.timeout-ms:120000}")
-    private long dsOcrTimeoutMs;
-
-    /**
-     * 通用 OCR 输出 token 上限（内嵌图 / 整份回退 OCR 使用）。
-     * 扫描件逐页 OCR 的 token 上限见 {@link #dsOcrPageMaxTokens}。
-     */
-    @Value("${rag.deepseek-ocr.max-tokens:4096}")
-    private int dsOcrMaxTokens;
+    /** 扫描件 PDF 逐页 OCR 页输出 token 上限默认值，模型未配置 extensions.page-max-tokens 时生效 */
+    private static final int DEFAULT_OCR_PAGE_MAX_TOKENS = 4096;
 
     /**
-     * 扫描件 PDF 逐页 OCR 的页输出 token 上限。
+     * 读取 OCR 模型的配置项。
      * <p>
-     * 受 DeepSeek-OCR 总上下文（输入+输出）8192 约束：单页图片输入约占 1500~2500 vision token，
-     * 若输出上限设为 8192 则必然触发 HTTP 400，故默认与通用值一致取 4096。
+     * 模型凭证与扩展参数统一声明在 {@code application.public.yml} 的
+     * {@code spring.ai.platform.models.deepseek-ocr} 下，本方法负责从
+     * {@link AiModelProperties} 取值并按需回退默认值（配置缺失仅降级，不阻断启动）。
      * </p>
+     *
+     * @return OCR 模型配置快照
      */
-    @Value("${rag.deepseek-ocr.page-max-tokens:4096}")
-    private int dsOcrPageMaxTokens;
+    private OcrModelOptions resolveOcrModelOptions() {
+        AiModelProperties.ModelConfig cfg = aiModelProperties == null || aiModelProperties.getModels() == null
+                ? null : aiModelProperties.getModels().get(OCR_MODEL_LOGICAL_NAME);
+        if (cfg == null) {
+            log.warn("未找到 OCR 模型配置 spring.ai.platform.models.{}, 使用默认运行参数",
+                    OCR_MODEL_LOGICAL_NAME);
+            return new OcrModelOptions("", "", OCR_MODEL_LOGICAL_NAME,
+                    DEFAULT_OCR_TIMEOUT_MS, DEFAULT_OCR_MAX_TOKENS, DEFAULT_OCR_PAGE_MAX_TOKENS);
+        }
+        String baseUrl = cfg.getBaseUrl() == null ? "" : cfg.getBaseUrl();
+        String apiKey = cfg.getApiKey() == null ? "" : cfg.getApiKey();
+        String model = cfg.getModelName() == null ? OCR_MODEL_LOGICAL_NAME : cfg.getModelName();
+
+        // 总上下文约束说明：DeepSeek-OCR 输入+输出共 8192，单页图片输入约占 1500~2500 vision token，
+        // 故页输出上限取 4096（4096 + 图片输入 ≈ 5500~6600 < 8192），不可设为 8192，否则服务端返回 HTTP 400。
+        long timeoutMs = cfg.getExtensionLong("timeout-ms", DEFAULT_OCR_TIMEOUT_MS);
+        int maxTokens = cfg.getExtensionInt("max-tokens", DEFAULT_OCR_MAX_TOKENS);
+        int pageMaxTokens = cfg.getExtensionInt("page-max-tokens", DEFAULT_OCR_PAGE_MAX_TOKENS);
+        log.info("OCR 模型配置: logicalName={}, model={}, baseUrl={}, timeoutMs={}, maxTokens={}, pageMaxTokens={}",
+                OCR_MODEL_LOGICAL_NAME, model, baseUrl, timeoutMs, maxTokens, pageMaxTokens);
+        return new OcrModelOptions(baseUrl, apiKey, model, timeoutMs, maxTokens, pageMaxTokens);
+    }
+
+    /**
+     * OCR 模型配置快照（值对象），由 {@link #resolveOcrModelOptions()} 构造后透传给解析器。
+     *
+     * @param baseUrl       API 基础地址
+     * @param apiKey        鉴权密钥
+     * @param model         调用时使用的模型名
+     * @param timeoutMs     单次请求超时（毫秒）
+     * @param maxTokens     通用输出 token 上限
+     * @param pageMaxTokens 扫描件逐页 OCR 的页输出 token 上限
+     */
+    private record OcrModelOptions(String baseUrl, String apiKey, String model,
+                                   long timeoutMs, int maxTokens, int pageMaxTokens) {
+    }
 
     /**
      * PDF 解析器提供方：{@code mineru}（默认）或 {@code tika-mixed}。
@@ -122,16 +161,19 @@ public class RagCoreConfig implements WebMvcConfigurer {
         Map<com.rag.common.enums.FileTypeEnum, Function<File, DocumentReader>> suppliers =
                 new EnumMap<>(com.rag.common.enums.FileTypeEnum.class);
 
+        // OCR 模型配置统一从 spring.ai.platform.models.deepseek-ocr 读取（含 extensions 运行参数）
+        OcrModelOptions ocr = resolveOcrModelOptions();
+
         // 策略1：文本类型 → Apache Tika（纯文本抽取，不做内嵌图 OCR）
         Function<File, DocumentReader> tikaReader = f -> new TikaDocumentReader(new FileSystemResource(f));
         // 策略2：文本+图片混合文档（图文混排）→ Tika 文本提取 + 内嵌图片多模态 OCR
         Function<File, DocumentReader> mixedReader = f ->
-                new TikaOcrMixedParser(openAiClient, dsOcrBaseUrl, dsOcrApiKey, dsOcrModel,
-                        dsOcrTimeoutMs, dsOcrMaxTokens, dsOcrPageMaxTokens, f);
+                new TikaOcrMixedParser(openAiClient, ocr.baseUrl(), ocr.apiKey(), ocr.model(),
+                        ocr.timeoutMs(), ocr.maxTokens(), ocr.pageMaxTokens(), f);
         // 策略3：纯图片 → 多模态 OCR（纯 PNG 等图片的默认解析器）
         Function<File, DocumentReader> ocrReader = f ->
-                new DeepSeekOcrParser(openAiClient, dsOcrBaseUrl, dsOcrApiKey, dsOcrModel,
-                        dsOcrTimeoutMs, dsOcrMaxTokens, f);
+                new DeepSeekOcrParser(openAiClient, ocr.baseUrl(), ocr.apiKey(), ocr.model(),
+                        ocr.timeoutMs(), ocr.maxTokens(), f);
         // 策略4：Excel → 智能表格解析
         Function<File, DocumentReader> excelReader = f -> new ExcelParser(f);
         // 策略5：MinerU → PDF 默认解析器（骨架），亦作为 modelName=minerU 时的强制覆盖器
@@ -235,17 +277,15 @@ public class RagCoreConfig implements WebMvcConfigurer {
                 userMapper, tenantMapper, userTenantRoleMapper, roleMapper);
     }
 
-    @Bean
-    @ConfigurationProperties(prefix = "rag.embedding")
-    public EmbeddingProperties embeddingProperties() {
-        return new EmbeddingProperties();
-    }
-
+    /**
+     * 知识库配置服务：Embedding 配置统一由 {@link AiModelProperties}
+     * （spring.ai.platform.models + extensions.dim）提供，不再依赖独立的 rag.embedding 段。
+     */
     @Bean
     public KbConfigService kbConfigService(KnowledgeBaseMapper kbMapper,
                                            VectorStoreRegistry vectorStoreRegistry,
-                                           EmbeddingProperties embeddingProperties) {
-        return new KbConfigService(kbMapper, vectorStoreRegistry, embeddingProperties);
+                                           AiModelProperties aiModelProperties) {
+        return new KbConfigService(kbMapper, vectorStoreRegistry, aiModelProperties);
     }
 
     @Bean

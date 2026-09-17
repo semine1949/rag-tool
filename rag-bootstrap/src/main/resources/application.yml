@@ -1,13 +1,16 @@
-# RAG向量入库工具 - 应用配置
+# RAG向量入库工具 - 应用配置（环境相关 + 非模型运行参数）
 # ============================================================================
 # 本文件中所有标注 TODO 的配置项需要根据实际环境填写
-# 大模型配置清单见 application.public.yml（该文件只保留 spring.ai.platform.models）
 #
 # 职责边界：
-#   - application.public.yml ：仅「大模型配置清单」（spring.ai.platform.models）
-#   - application.yml（本文件）：环境相关配置 + 运行参数（rag.embedding / rag.deepseek-ocr / rag.parser 等）
-#   因本文件通过 spring.config.import 导入 public.yml，本文件优先级更高，
-#   故上述运行参数统一放在本文件中作为唯一来源，避免双写导致"改 public.yml 不生效"。
+#   - application.public.yml ：全部大模型配置
+#   - application.yml（本文件）：环境相关配置 + 非模型运行参数
+#
+# 优先级说明（重要）：
+#   本文件通过 spring.config.import 导入 application.public.yml。
+#   Spring Boot 2.4+ 规则为「被导入文档优先于导入者」，即 public.yml 的同名 key
+#   会覆盖本文件；两者按 key 逐条合并，不同子键可共存。
+#   因此同一配置项只允许出现在一个文件中，严禁双写，否则改本文件不生效。
 # ============================================================================
 
 # 导入公共模型配置
@@ -98,50 +101,9 @@ rag:
       # BM25 检索默认权重
       bm25-weight: 0.5
 
-  # ---------- Embedding 兼容配置（KbConfigService / AdminController.resolveEmbeddingDim 读取） ----------
-  # ⚠ 本段为兼容旧链路保留，迁移自 application.public.yml。
-  #   其中 api-key / base-url / model 三项与 spring.ai.platform.models 下的
-  #   bge-m3 / tongyi / openai 重复，实际代码只消费 type 与 dim（真实密钥与端点走 models 段）；
-  #   但因 EmbeddingConfig.baseUrl / modelSource 仍由此灌入，保留以免留下空字段隐患。
-  #   后续如统一到 spring.ai.platform.models.extensions 后可整体删除。
-  embedding:
-    # 默认模型类型：tongyi / bge-m3 / openai
-    type: bge-m3
-    bge-m3:
-      api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
-      base-url: https://api.siliconflow.cn/v1
-      model: BAAI/bge-m3
-      dim: 1024
-    tongyi:
-      api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
-      base-url: https://api.siliconflow.cn/v1
-      model: Qwen/Qwen3-Embedding-0.6B
-      dim: 1024
-    openai:
-      api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-      base-url: https://api.openai.com/v1
-      model: text-embedding-3-small
-      dim: 1536
-
-  # ---------- OCR 识别模型（RagCoreConfig 读取后透传 DeepSeekOcrParser / TikaOcrMixedParser） ----------
-  # ⚠ 迁移自 application.public.yml。api-key / base-url / model 与 spring.ai.platform.models.deepseek-ocr 重复，
-  #   此处由 RagCoreConfig @Value 直连读取（未走 models 适配器），暂需保留。
-  deepseek-ocr:
-    api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
-    base-url: https://api.siliconflow.cn/v1
-    model: deepseek-ai/DeepSeek-OCR
-    timeout-ms: 120000
-    # 通用 OCR 输出 token 上限（内嵌图 / 非 PDF 整份回退 OCR 使用）
-    max-tokens: 4096
-    # 扫描件 PDF 逐页 OCR 的页输出 token 上限。
-    # ⚠ 约束：DeepSeek-OCR 总上下文（输入+输出）仅 8192，而单页 A4 图片输入约 1500~2500 vision token，
-    #    故输出上限不可设为 8192（8192 + 图片输入 > 8192 → 服务端必然返回 HTTP 400）。
-    #    4096 可覆盖文字密集页（约 2000~3000 token），且 4096 + 输入 ≈ 5500~6600 < 8192，安全。
-    page-max-tokens: 4096
-
   # ---------- 文档解析器路由（RagCoreConfig.documentParseFactory 读取） ----------
-  # ⚠ 本配置的唯一来源即为本文件（application.yml）；不要再写入 application.public.yml，
-  #   该文件被本文件 spring.config.import 导入，优先级更低，双写会导致"改 public 不生效"。
+  # ⚠ 本配置唯一来源为本文件（application.yml）；不要再写入 application.public.yml，
+  #   该文件由本文件 spring.config.import 导入且优先级更高，双写会覆盖本文件的值。
   parser:
     # PDF 解析器提供方：
     #   mineru     —— 默认，PDF 走 MinerUParser（当前为路由骨架，实际解析待实现，PDF 会报未实现异常）

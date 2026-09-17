@@ -6,7 +6,6 @@ import com.rag.auth.service.AuthServiceImpl;
 import com.rag.auth.service.KbAccessService;
 import com.rag.auth.service.KbConfigService;
 import com.rag.common.entity.config.EmbeddingConfig;
-import com.rag.common.entity.config.EmbeddingProperties;
 import com.rag.common.entity.*;
 import com.rag.common.enums.ModelCategory;
 import com.rag.common.exception.RagException;
@@ -39,7 +38,6 @@ public class AdminController {
     private final KbConfigService kbConfigService;
     private final AuthServiceImpl authService;
     private final AiModelProperties aiModelProperties;
-    private final EmbeddingProperties embeddingProperties;
 
     public AdminController(TenantMapper tenantMapper,
                            UserMapper userMapper,
@@ -50,8 +48,7 @@ public class AdminController {
                            KbAccessService kbAccessService,
                            KbConfigService kbConfigService,
                            AuthServiceImpl authService,
-                           AiModelProperties aiModelProperties,
-                           EmbeddingProperties embeddingProperties) {
+                           AiModelProperties aiModelProperties) {
         this.tenantMapper = tenantMapper;
         this.userMapper = userMapper;
         this.kbMapper = kbMapper;
@@ -62,7 +59,6 @@ public class AdminController {
         this.kbConfigService = kbConfigService;
         this.authService = authService;
         this.aiModelProperties = aiModelProperties;
-        this.embeddingProperties = embeddingProperties;
     }
 
     // ==================== 租户管理 ====================
@@ -321,7 +317,7 @@ public class AdminController {
 
     /**
      * 模型列表接口：返回配置中的对话(CHAT)与嵌入(EMBEDDING)模型，供前端新建知识库 / 聊天页选择。
-     * Embedding 模型的向量维度从 rag.embedding 段按逻辑名取值。
+     * Embedding 模型的向量维度从 spring.ai.platform.models 对应模型的 extensions.dim 取值。
      */
     @GetMapping("/kb/models")
     public ResponseEntity<?> listModels() {
@@ -355,24 +351,26 @@ public class AdminController {
     }
 
     /**
-     * 解析 Embedding 模型的向量维度：将逻辑模型名映射到 rag.embedding.*.dim。
-     * 兼容 bge-m3 / tongyi / openai 三种逻辑名，未知则返回 null。
+     * 解析 Embedding 模型的向量维度：按逻辑模型名精确命中
+     * {@code spring.ai.platform.models.<逻辑名>.extensions.dim}。
+     * <p>模型不存在、未配置 extensions 或 dim 非数字时返回 null（前端维度展示为空）。</p>
+     *
+     * @param logicName 模型逻辑名（即 models 段的 key，如 bge-m3 / tongyi / openai）
+     * @return 向量维度，未配置时返回 null
      */
     private Integer resolveEmbeddingDim(String logicName) {
-        if (embeddingProperties == null) {
+        if (aiModelProperties == null || aiModelProperties.getModels() == null || logicName == null) {
             return null;
         }
-        String key = logicName.toLowerCase();
-        if (key.contains("bge")) {
-            return embeddingProperties.getBgeM3().getDim();
+        AiModelProperties.ModelConfig mc = aiModelProperties.getModels().get(logicName);
+        if (mc == null) {
+            return null;
         }
-        if (key.contains("tongyi") || key.contains("qwen")) {
-            return embeddingProperties.getTongyi().getDim();
+        Integer dim = mc.getExtensionInt("dim", null);
+        if (dim == null) {
+            log.warn("Embedding 模型 {} 未配置 extensions.dim, 前端向量维度将为空", logicName);
         }
-        if (key.contains("openai") || key.contains("text-embedding")) {
-            return embeddingProperties.getOpenai().getDim();
-        }
-        return null;
+        return dim;
     }
 
     @GetMapping("/kb/list")

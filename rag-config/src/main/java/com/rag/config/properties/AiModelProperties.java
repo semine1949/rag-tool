@@ -110,5 +110,70 @@ public class AiModelProperties {
 
         /** 扩展参数（协议特有 / 未来扩展的键值对） */
         private Map<String, Object> extensions = new HashMap<>();
+
+        /**
+         * 从 {@link #extensions} 中安全读取字符串型扩展参数。
+         * <p>YAML 中的数字/布尔值经绑定后可能为 String / Number / Boolean，
+         * 此处统一按字符串返回，避免调用方各自做类型判断。</p>
+         *
+         * @param key          扩展参数键（如 {@code dim} / {@code timeout-ms}）
+         * @param defaultValue 键不存在或值为空时返回的默认值
+         * @return 字符串值，缺失时返回 defaultValue
+         */
+        public String getExtensionString(String key, String defaultValue) {
+            Object v = extensions == null ? null : extensions.get(key);
+            if (v == null) {
+                return defaultValue;
+            }
+            String s = String.valueOf(v);
+            return s.isBlank() ? defaultValue : s;
+        }
+
+        /**
+         * 从 {@link #extensions} 中安全读取整型扩展参数。
+         * <p>支持 Number 与数字字符串两种形态；解析失败或键缺失时返回默认值，
+         * 不会抛出异常（配置错误仅降级，不影响主链路）。</p>
+         *
+         * @param key          扩展参数键（如 {@code dim} / {@code max-tokens}）
+         * @param defaultValue 键不存在或解析失败时返回的默认值
+         * @return 整型值，缺失/非法时返回 defaultValue
+         */
+        public Integer getExtensionInt(String key, Integer defaultValue) {
+            Object v = extensions == null ? null : extensions.get(key);
+            if (v instanceof Number n) {
+                return n.intValue();
+            }
+            if (v instanceof String s && !s.isBlank()) {
+                try {
+                    return Integer.valueOf(s.trim());
+                } catch (NumberFormatException ignored) {
+                    // 配置值非法：降级为默认值，交由上层日志观测
+                    return defaultValue;
+                }
+            }
+            return defaultValue;
+        }
+
+        /**
+         * 从 {@link #extensions} 中安全读取长整型扩展参数（用于 timeout-ms 等毫秒值）。
+         *
+         * @param key          扩展参数键
+         * @param defaultValue 键不存在或解析失败时返回的默认值
+         * @return 长整型值，缺失/非法时返回 defaultValue
+         */
+        public Long getExtensionLong(String key, Long defaultValue) {
+            Object v = extensions == null ? null : extensions.get(key);
+            if (v instanceof Number n) {
+                return n.longValue();
+            }
+            if (v instanceof String s && !s.isBlank()) {
+                try {
+                    return Long.valueOf(s.trim());
+                } catch (NumberFormatException ignored) {
+                    return defaultValue;
+                }
+            }
+            return defaultValue;
+        }
     }
 }

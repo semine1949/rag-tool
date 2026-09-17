@@ -129,7 +129,7 @@ rag-vector-tool (父 POM)
 | getRerankModel(name) | 重排模型（不走适配器，工厂直接按 OPENAI 协议创建 OpenAiRerankModel） |
 | existsModel / getModelConfig / getModelNamesByCategory | 配置查询 |
 
-**配置体系**：模型统一声明于 spring.ai.platform.models（application.public.yml，经 spring.config.import 引入），由 AiModelProperties 绑定。每个模型含 category（CHAT/EMBEDDING/OCR/RERANK/ASR/WORKFLOW/AGENT/RAG）+ protocol（OPENAI/OLLAMA/DASHSCOPE）+ baseUrl/apiKey/modelName + 生成参数（temperature/maxTokens/topP/streamEnabled 等）+ extensions 扩展参数。修改 YAML 的 protocol 字段即可切换协议，无需改代码。
+**配置体系**：模型统一声明于 spring.ai.platform.models（application.public.yml，经 spring.config.import 引入），由 AiModelProperties 绑定。每个模型含 category（CHAT/EMBEDDING/OCR/RERANK/ASR/WORKFLOW/AGENT/RAG）+ protocol（OPENAI/OLLAMA/DASHSCOPE）+ baseUrl/apiKey/modelName + 生成参数（temperature/maxTokens/topP/streamEnabled 等）+ extensions 扩展参数（Embedding 的向量维度 dim、OCR 的 timeout-ms / max-tokens / page-max-tokens 等均存于此）。修改 YAML 的 protocol 字段即可切换协议，无需改代码。模型相关配置全部集中在本文件，application.yml 仅保留环境与运行参数，严禁双写（public.yml 经 spring.config.import 被导入，优先级高于 application.yml）。
 
 **统一 HTTP 客户端**：OpenAiClient（rag-common/client）封装 embed / rerank / ocr 三类 OpenAI 兼容端点调用，共享 OkHttp 连接池与 Bearer 鉴权；Rerank 内置令牌桶限流 + 分批处理。
 
@@ -189,7 +189,7 @@ rag-vector-tool (父 POM)
 - 部署方式：当前配置均为远程 API 调用；Ollama 协议适配器已实现（OllamaModelAdapter），配置即可启用本地模型
 - 协议：统一走 OpenAI 兼容 /embeddings 端点，由 AiModelFactory.getEmbeddingModel() 创建官方 OpenAiEmbeddingModel（spring-ai-starter-model-openai）
 - 缓存：按逻辑模型名缓存实例（AiModelFactoryImpl 内 ConcurrentHashMap，惰性创建）
-- 配置与映射：模型统一声明于 spring.ai.platform.models（application.public.yml）；知识库 EmbeddingModelType 经 ChatContextService.resolveEmbeddingModel() 映射为逻辑名（BGE_M3→bge-m3 / TONGYI→tongyi / OPENAI→openai）
+- 配置与映射：模型统一声明于 spring.ai.platform.models（application.public.yml），向量维度取对应模型段的 extensions.dim；知识库 EmbeddingModelType 经 ChatContextService.resolveEmbeddingModel() 映射为逻辑名（BGE_M3→bge-m3 / TONGYI→tongyi / OPENAI→openai），KbConfigService / AdminController.resolveEmbeddingDim() 按同一逻辑名精确查表取凭证与 dim
 
 ---
 
@@ -520,7 +520,7 @@ ChatController（chat / chatStream 读取 request.toSearchConfig() 透传检索�
 | 类别 | 约束/问题 | 影响 |
 |------|----------|------|
 | 待验证 | 父子增强 MySQL 跨表反查 | v4 已统一 doc_chunk.chunk_id 为 UUID 业务键，与向量 metadata chunkId 一致，理论上可通过 `findByChunkId` 跨表反查父块；跨表增强逻辑仍待落地 |
-| 待迁移 | rag.embedding（vectorDim）与 rag.deepseek-ocr 旧配置保留 | 后续迁移到 spring.ai.platform.models.extensions 统一管理 |
+| 已完成 | rag.embedding（vectorDim）与 rag.deepseek-ocr 旧配置迁移 | 已迁移至 spring.ai.platform.models + extensions（dim / max-tokens / page-max-tokens），消费方改读 AiModelProperties |
 | 待迁移 | DashScope 适配器依赖 spring-ai-alibaba（非官方 starter） | 版本已与 Spring AI 1.0.0 对齐，需关注后续兼容性 |
 | 性能 | 单服务部署，无分布式向量检索 | 大规模知识库场景性能受限 |
 | 性能 | Embedding/OCR 均同步调用 | 大文件上传可能超时（OCR 超时 120s） |

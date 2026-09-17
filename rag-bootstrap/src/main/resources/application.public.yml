@@ -1,8 +1,16 @@
 # ============================================================================
-# RAG向量入库工具 - 大模型配置清单
+# RAG向量入库工具 - 大模型配置清单（唯一来源）
 # ============================================================================
 # 本文件列出项目所有用到的大模型，统一通过 spring.ai.platform.models 声明。
 # 通过 category（类别）+ protocol（协议）路由到对应适配器，支持动态切换。
+#
+# 模型特有但 ModelConfig 未声明的参数（如 Embedding 的 dim、
+# OCR 的 max-tokens / page-max-tokens）统一写入对应模型的 extensions 段。
+#
+# 优先级（重要）：本文件由 application.yml 通过 spring.config.import 导入，
+#   按 Spring Boot 2.4+ 规则「被导入文档优先」，本文件同名 key 会覆盖 application.yml。
+#   故模型相关配置只允许写在本文件，严禁与 application.yml 双写。
+#
 # API Key 等敏感信息请按环境填写。
 # ============================================================================
 
@@ -18,6 +26,8 @@ spring:
           base-url: https://api.siliconflow.cn
           api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
           model-name: BAAI/bge-m3
+          extensions:
+            dim: 1024
         # Qwen/Qwen3-Embedding-0.6B — 硅基流动
         tongyi:
           category: EMBEDDING
@@ -25,6 +35,8 @@ spring:
           base-url: https://api.siliconflow.cn
           api-key: sk-raqbnrbttmyutrdghyfmgxhalqvplggtxbikhsksxjpekzak
           model-name: Qwen/Qwen3-Embedding-0.6B
+          extensions:
+            dim: 1024
         # text-embedding-3-small — OpenAI 官方
         openai:
           category: EMBEDDING
@@ -32,6 +44,8 @@ spring:
           base-url: https://api.openai.com
           api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
           model-name: text-embedding-3-small
+          extensions:
+            dim: 1536
 
         # ==================== Rerank 重排序模型 ====================
         # Qwen/Qwen3-Reranker — 硅基流动（候选池放大、限流参数通过 extensions 传递）
@@ -128,7 +142,6 @@ spring:
           stream-enabled: true
 
         # ==================== OCR 识别模型 ====================
-        # deepseek-ai/DeepSeek-OCR — 硅基流动（OCR 走自研 OpenAiClient 直连）
         deepseek-ocr:
           category: OCR
           protocol: OPENAI
@@ -137,13 +150,5 @@ spring:
           model-name: deepseek-ai/DeepSeek-OCR
           extensions:
             timeout-ms: 120000
-
-# ============================================================================
-# 说明：本文件现在【只保留大模型配置清单】（spring.ai.platform.models）。
-#
-# 以下非「大模型清单」的运行参数已于本次迁移至 application.yml（唯一来源），
-# 本文件不再保留，请勿再写回，否则会因 application.yml 优先级更高而"改了不生效"：
-#   - rag.embedding.*      （Embedding 兼容配置，KbConfigService / AdminController 读取）
-#   - rag.deepseek-ocr.*   （OCR 直连参数，RagCoreConfig 读取）
-#   - rag.parser.*         （PDF 解析器路由开关，RagCoreConfig 读取）
-# ============================================================================
+            max-tokens: 4096
+            page-max-tokens: 4096

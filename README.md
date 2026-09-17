@@ -150,8 +150,11 @@ git clone https://github.com/your-org/rag-tool.git && cd rag-tool
 mysql -u root -p < rag-bootstrap/src/main/resources/sql/schema-v2.sql
 
 # 3. 修改配置（根据实际环境填写）
+vim rag-bootstrap/src/main/resources/application.public.yml
+# 需要修改：所有大模型配置（spring.ai.platform.models，含 Embedding / Chat / Rerank / OCR 的 API Key）
 vim rag-bootstrap/src/main/resources/application.yml
-# 需要修改：MySQL 连接信息、Weaviate URL、Embedding 模型 API Key
+# 需要修改：MySQL 连接信息、Redis、Weaviate URL 等环境相关配置
+# 说明：模型相关配置统一在 application.public.yml，application.yml 只放环境与运行参数，切勿双写
 
 # 4. 编译启动
 ./mvnw -pl rag-bootstrap spring-boot:run
@@ -229,7 +232,8 @@ npm run build   # 类型检查 + 生产构建
 
 ### 1. 切换 Embedding / LLM 模型
 
-模型统一声明于 `application.public.yml`（`spring.ai.platform.models`），修改 `protocol` 即可切换 OPENAI / OLLAMA / DASHSCOPE 协议，无需改代码：
+模型统一声明于 `application.public.yml`（`spring.ai.platform.models`），修改 `protocol` 即可切换 OPENAI / OLLAMA / DASHSCOPE 协议，无需改代码。
+`ModelConfig` 未声明的模型专属参数（如 Embedding 的向量维度 `dim`、OCR 的 `max-tokens` / `page-max-tokens`）统一写入该模型的 `extensions` 段：
 
 ```yaml
 # application.public.yml
@@ -243,6 +247,8 @@ spring:
           base-url: https://api.siliconflow.cn/v1
           api-key: your-api-key
           model-name: Qwen/Qwen3-Embedding-0.6B
+          extensions:
+            dim: 1024                    # 向量输出维度（Weaviate 集合按此创建，前端也据此展示）
         qwen-turbo:                      # Chat：可配置模型级默认温度 + 场景温度表
           category: CHAT
           protocol: OPENAI
