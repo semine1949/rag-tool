@@ -2,6 +2,12 @@ import { useRef, useState, type DragEvent } from 'react';
 import { Badge, Button, Progress, Select } from '@/components/ui';
 import { IconUpload } from '@/components/icons';
 import { CHUNK_STRATEGY_META } from '@/lib/rbac';
+import {
+  PARSER_MODEL_META,
+  PARSER_MODEL_ORDER,
+  resolveParserByFileName,
+  type ParserModel,
+} from '@/lib/parserRouting';
 import type { ChunkStrategy, KnowledgeBase, UploadTask } from '@/lib/types';
 import { formatSize } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
@@ -15,22 +21,31 @@ export interface UploadZoneProps {
   kbs: KnowledgeBase[];
   /** 上传任务列表 */
   tasks: UploadTask[];
-  onUpload: (files: File[], kbId: number, strategy: ChunkStrategy) => void;
+  onUpload: (files: File[], kbId: number, strategy: ChunkStrategy, parser: ParserModel) => void;
   /** 是否有上传权限 */
   disabled?: boolean;
 }
 
-/** 拖拽上传区：支持多文件、目标知识库与分块策略选择 */
+/** 拖拽上传区：支持多文件、目标知识库、分块策略与解析模型选择 */
 export function UploadZone({ kbs, tasks, onUpload, disabled }: UploadZoneProps) {
   const [dragging, setDragging] = useState(false);
   const [kbId, setKbId] = useState<string>(String(kbs[0]?.id ?? ''));
   const [strategy, setStrategy] = useState<ChunkStrategy>('text-model');
+  /** 解析模型：auto 表示交由后端按扩展名自动识别 */
+  const [parser, setParser] = useState<ParserModel>('auto');
+  /** 最近一次选中/拖入的文件名，用于「自动识别结果」预览 */
+  const [pending, setPending] = useState<string[]>([]);
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+
+  /** 解析模型提示文案：auto 展示路由总览，显式选择时展示该解析器说明 */
+  const autoHint = PARSER_MODEL_META[parser].desc;
 
   /** 校验并提交文件 */
   const submit = (files: File[]) => {
     setError('');
+    // 记录文件名供「自动识别结果」预览（解析模型为 auto 时展示）
+    setPending(files.map((f) => f.name));
     if (!kbId) {
       setError('请先选择目标知识库');
       return;
@@ -41,7 +56,7 @@ export function UploadZone({ kbs, tasks, onUpload, disabled }: UploadZoneProps) 
       setError(`以下文件超过 ${MAX_SIZE_MB}MB 限制：${oversize.map((f) => f.name).join('、')}`);
     }
     const valid = files.filter((f) => f.size <= MAX_SIZE_MB * 1024 * 1024);
-    if (valid.length > 0) onUpload(valid, Number(kbId), strategy);
+    if (valid.length > 0) onUpload(valid, Number(kbId), strategy, parser);
   };
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -64,6 +79,17 @@ export function UploadZone({ kbs, tasks, onUpload, disabled }: UploadZoneProps) 
           disabled={disabled}
         />
         <Select
+          label="解析模型"
+          value={parser}
+          onChange={(e) => setParser(e.target.value as ParserModel)}
+          options={PARSER_MODEL_ORDER.map((p) => ({
+            value: p,
+            label: PARSER_MODEL_META[p].label,
+          }))}
+          disabled={disabled}
+          hint={autoHint}
+        />
+        <Select
           label="分块策略"
           value={strategy}
           onChange={(e) => setStrategy(e.target.value as ChunkStrategy)}
@@ -75,6 +101,25 @@ export function UploadZone({ kbs, tasks, onUpload, disabled }: UploadZoneProps) 
           hint={CHUNK_STRATEGY_META[strategy].desc}
         />
       </div>
+
+      {/* 自动识别预览：展示每个待上传文件将命中的解析器 */}
+      {parser === 'auto' && pending.length > 0 && (
+        <div className="rounded-xl border border-line bg-wash/[0.03] px-3.5 py-2.5">
+          <p className="mb-1.5 text-[10px] font-medium tracking-wide text-muted-2">
+            自动识别结果（按扩展名）
+          </p>
+          <ul className="space-y-1">
+            {pending.map((f) => (
+              <li key={f} className="flex items-center justify-between gap-3 text-[11px]">
+                <span className="min-w-0 flex-1 truncate text-muted">{f}</span>
+                <span className="shrink-0 text-accent">
+                  {PARSER_MODEL_META[resolveParserByFileName(f)].label}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* 拖拽区 */}
       <div

@@ -12,6 +12,7 @@ import type {
   StreamEvent,
   UploadOptions,
 } from '@/lib/types';
+import { resolveParserByFileName, toWireModelName } from '@/lib/parserRouting';
 import {
   API_BASE_URL,
   authHeaders,
@@ -135,6 +136,11 @@ export const ragApi = {
    * 上传文档
    * 后端提供 /upload、/upload/text-model、/upload/hierarchical-model 三个端点，
    * 前端按所选分块策略路由到对应端点。
+   *
+   * 解析模型（modelName）：
+   *   - `options.parserModel` 为 auto / 未设置时不下发该字段，由后端按扩展名自动路由
+   *     （PNG→DeepSeekOCR，PDF→MinerU，XLS/XLSX→ExcelParser，TXT/MD→Tika）
+   *   - 显式选择时下发 modelName，强制后端使用对应解析器
    */
   upload(
     file: File,
@@ -144,6 +150,12 @@ export const ragApi = {
     const form = new FormData();
     form.append('file', file);
     form.append('kbId', String(options.kbId));
+
+    // 解析模型：auto 不下发，交由后端按扩展名自动路由
+    const modelName = toWireModelName(options.parserModel ?? resolveParserByFileName(file.name));
+    if (modelName) {
+      form.append('modelName', modelName);
+    }
 
     const url =
       options.chunkStrategy === 'hierarchical-model'

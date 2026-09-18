@@ -151,14 +151,39 @@ rag-vector-tool (父 POM)
 | 文件类型 | 扩展名 | 解析器 | 策略说明 |
 |---------|--------|--------|---------|
 | 纯文本 | txt, md, markdown, html, htm | `TikaDocumentReader` | 直接文本提取 |
-| Office 文档 | pdf, doc, docx, ppt, pptx | `TikaOcrMixedParser` | Tika 文本提取 + 内嵌图片 OCR |
+| PDF | pdf | `MinerUParser` | 远程 MinerU 官方 API 版面解析产出 Markdown（`rag.parser.pdf-provider` 可回退为 `tika-mixed`） |
+| Office 文档 | doc, docx, ppt, pptx | `TikaOcrMixedParser` | Tika 文本提取 + 内嵌图片 OCR（图文混排） |
 | 图片 | jpg, jpeg, png, bmp | `DeepSeekOcrParser` | 纯多模态 OCR |
 | Excel | xls, xlsx | `ExcelParser` | 智能表格解析（≤20行→Markdown表格，>20行→键值对） |
+
+**解析器路由规则**（`DocumentParseFactory.parse(file, modelName)`，优先级从高到低）：
+
+1. **`modelName=minerU`（忽略大小写）** → 强制 `MinerUParser`，覆盖任意文件类型
+2. **按扩展名匹配** → 上表映射（PDF 键的取值由 `rag.parser.pdf-provider` 决定）
+3. **扩展名未匹配** → 回退 TXT 的 `TikaDocumentReader`；仍无则抛不支持异常
+
+**前端解析器路由**（`rag-frontend/src/lib/parserRouting.ts`）：
+
+| 扩展名 | 前端默认解析器 | 下发 modelName |
+|--------|---------------|----------------|
+| png / jpg / jpeg / bmp | DeepSeekOCR | `deepseekocr` |
+| pdf | MinerU | `minerU` |
+| xls / xlsx / csv | ExcelParser | `excelparser` |
+| doc / docx / ppt / pptx | 图文混排 | `tikamixed` |
+| txt / md / markdown / html / htm | 自动识别（Tika 纯文本抽取） | 不下发 |
+
+上传区提供「解析模型」下拉框（默认「自动识别」），可手动覆盖为 MinerU / 图文混排 / DeepSeekOCR / ExcelParser；
+`auto` 时前端按扩展名解析出具体解析器并下发 `modelName` 表单字段，文档表格新增「解析器」列展示路由结果。
 
 **OCR 策略**：
 - 已启用 OCR：通过 OpenAiClient.ocr() 调用硅基流动的 deepseek-ai/DeepSeek-OCR 远程模型（多模态 /chat/completions 端点，独立超时控制）
 - PDF/Word/PPT 中内嵌图片：由 `ImageCapturingExtractor` 截获，逐张 OCR
 - 纯扫描件兜底：若 Tika + 内嵌图片 OCR 均无产出，回退为全量文档 OCR
+
+**MinerU 解析策略**（远程官方 API，非本地模型）：
+- 凭证与参数声明于 `application.public.yml` 的 `spring.ai.platform.models.mineru`（`category: PARSER`，特有参数走 `extensions`），由 `MinerUOptions` 封装、`MinerUClient` 持有
+- 四段式异步链路：申请上传链接 → PUT 上传 → 轮询 `state` → 下载 zip 取 `full.md`
+- **失败直接抛异常，不做隐式降级**（回退方式：`rag.parser.pdf-provider=tika-mixed`）
 
 ### 3.2 Chunk 分块策略
 
@@ -510,6 +535,7 @@ ChatController（chat / chatStream 读取 request.toSearchConfig() 透传检索�
 - **设计系统**：背景 `#070b15`、玻璃卡片（backdrop-blur）、accent 主渐变 `linear-gradient(135deg,#22d3ee,#a855f7)`。
 - **Mock 模式**：内置完整 Mock 数据层（`src/lib/api/mock`），`VITE_USE_MOCK` 开关可独立运行；默认对接真实后端（Vite 代理 `/api` → localhost:8080），含 `adapter.ts` 后端实体→前端类型统一映射层。
 - **对接状态**：认证/列表/上传/检索/问答/权限管理均与真实后端端到端打通；JWT 自动注入与 401 自动刷新、SSE 手动分帧解析。
+- **解析器路由**：`parserRouting.ts` 维护扩展名 → 解析模型映射（PNG→DeepSeekOCR，PDF→MinerU，表格→ExcelParser，Office→图文混排，文本→Tika），上传区提供「解析模型」下拉框可手动覆盖，文档表格含「解析器」列。
 
 ---
 

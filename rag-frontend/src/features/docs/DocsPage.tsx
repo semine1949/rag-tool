@@ -13,6 +13,7 @@ import {
 } from '@/components/ui';
 import { IconDoc, IconRefresh, IconSearch, IconTrash } from '@/components/icons';
 import { adminApi, ragApi } from '@/lib/api';
+import { PARSER_MODEL_META, resolveParserByFileName, type ParserModel } from '@/lib/parserRouting';
 import type {
   ChunkStrategy,
   DocStatus,
@@ -100,7 +101,12 @@ export function DocsPage() {
   }, [docs, keyword, statusFilter, kbFilter]);
 
   /** 批量上传：逐个文件跟踪进度 */
-  const handleUpload = (files: File[], kbId: number, strategy: ChunkStrategy) => {
+  const handleUpload = (
+    files: File[],
+    kbId: number,
+    strategy: ChunkStrategy,
+    parser: ParserModel,
+  ) => {
     const kb = kbs.find((k) => k.id === kbId);
     files.forEach((file) => {
       const taskId = `${file.name}-${Date.now()}-${Math.random()}`;
@@ -115,6 +121,9 @@ export function DocsPage() {
         },
       ]);
 
+      // 解析模型为 auto 时由后端按扩展名自动路由，否则作为 modelName 强制下发
+      const effectiveParser = parser === 'auto' ? resolveParserByFileName(file.name) : parser;
+
       ragApi
         .upload(
           file,
@@ -123,6 +132,7 @@ export function DocsPage() {
             chunkStrategy: strategy,
             chunkSize: kb?.chunkSize ?? 800,
             chunkOverlap: kb?.chunkOverlap ?? 120,
+            parserModel: effectiveParser,
           },
           (percent) => {
             setTasks((prev) =>
@@ -199,6 +209,15 @@ export function DocsPage() {
       key: 'type',
       title: '类型',
       render: (d) => <Badge tone={TYPE_TONE[d.fileType] ?? 'neutral'}>{d.fileType.toUpperCase()}</Badge>,
+    },
+    {
+      key: 'parser',
+      title: '解析器',
+      render: (d) => (
+        <span className="text-[11px] text-muted">
+          {PARSER_MODEL_META[resolveParserByFileName(d.fileName)].label}
+        </span>
+      ),
     },
     {
       key: 'kb',
@@ -292,7 +311,7 @@ export function DocsPage() {
       <Card>
         <CardHeader
           title="上传文档"
-          subtitle="文件将按所选分块策略解析、切分并写入向量集合"
+          subtitle="按扩展名自动选择解析器（PNG→DeepSeekOCR，PDF→MinerU，表格→ExcelParser），可手动覆盖"
           action={<Badge tone="accent">{kbs.length} 个知识库可选</Badge>}
         />
         <UploadZone

@@ -177,6 +177,10 @@ curl -X POST http://localhost:8080/api/rag/upload/batch \
   -F 'files=@doc1.pdf' -F 'files=@doc2.docx' \
   -F 'request={"kbId":1,"chunkStrategy":"TEXT_MODEL"};type=application/json'
 
+# 指定解析器上传（modelName=minerU 强制走 MinerU，覆盖任意文件类型）
+curl -X POST http://localhost:8080/api/rag/upload/text-model \
+  -F 'file=@scan.pdf' -F 'kbId=1' -F 'modelName=minerU'
+
 # 向量检索
 curl -X POST 'http://localhost:8080/api/rag/search?kbId=1&query=关键问题&topK=5'
 
@@ -223,6 +227,13 @@ npm run build   # 类型检查 + 生产构建
 
 - **技术栈**：React 18 + TypeScript + Vite + Tailwind CSS，无第三方组件库，基础 UI 与图表组件按深色玻璃拟态设计系统自研
 - **页面清单**：登录/注册、概览仪表盘、智能问答（流式 + 引用溯源 + 多轮会话）、知识库管理、文档管理、租户管理、用户管理、角色权限（含 SUPER_ADMIN 两级权限视图）
+- **解析器自动路由**：上传时按扩展名自动选择解析器，无需手工传 `modelName`
+  - PNG / JPG / JPEG / BMP → **DeepSeekOCR**（纯图片多模态识别）
+  - PDF → **MinerU**（远程官方 API 版面解析）
+  - XLS / XLSX / CSV → **ExcelParser**（智能表格）
+  - DOC / DOCX / PPT / PPTX → **图文混排**（Tika 文本 + 内嵌图 OCR）
+  - TXT / MD / HTML → **Tika**（纯文本抽取）
+  - 上传区「解析模型」下拉框可手动覆盖（MinerU / 图文混排 / DeepSeekOCR / ExcelParser），文档列表新增「解析器」列展示实际路由结果
 - **对接模式**：内置完整 Mock 数据层可独立演示；配置 `.env`（`VITE_USE_MOCK=false`）对接真实后端，含后端实体→前端类型统一映射层
 - **默认账号**：后端启动时自动创建 `admin / admin123`（平台超级用户）
 

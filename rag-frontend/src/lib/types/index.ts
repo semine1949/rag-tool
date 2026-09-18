@@ -3,6 +3,10 @@
  * 与后端 rag-common / rag-auth 模块的 DTO 严格对齐
  */
 
+import type { ParserModel } from '@/lib/parserRouting';
+
+export type { ParserModel };
+
 /** 后端统一响应包装体 */
 export interface ApiResult<T> {
   code: number;
@@ -251,6 +255,11 @@ export interface UploadOptions {
   chunkStrategy: ChunkStrategy;
   chunkSize: number;
   chunkOverlap: number;
+  /**
+   * 解析模型（可选）：不传或为 auto 时由后端按扩展名自动路由；
+   * 其余取值会作为 modelName 表单字段下发，强制后端使用对应解析器。
+   */
+  parserModel?: ParserModel;
 }
 
 /** 上传任务的前端状态 */
