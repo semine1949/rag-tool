@@ -21,6 +21,9 @@ public enum ModelCategory {
     /** OCR 图像识别模型 */
     OCR,
 
+    /**文档解析类服务（如 MinerU）*/
+    PARSER,
+
     /** 重排序模型（精排） */
     RERANK,
 

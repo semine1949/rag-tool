@@ -106,9 +106,11 @@ rag:
   #   该文件由本文件 spring.config.import 导入且优先级更高，双写会覆盖本文件的值。
   parser:
     # PDF 解析器提供方：
-    #   mineru     —— 默认，PDF 走 MinerUParser（当前为路由骨架，实际解析待实现，PDF 会报未实现异常）
+    #   mineru     —— 默认，PDF 走 MinerUParser（调用远程 MinerU 官方 API 解析为 Markdown，
+    #                 所需凭证与参数见 application.public.yml 的 spring.ai.platform.models.mineru）
     #   tika-mixed —— 回退，PDF 走 TikaOcrMixedParser（Tika 文本 + 内嵌图 OCR + 扫描件逐页 OCR）
     # 注：上传接口传 modelName=minerU 时，任意文件类型均强制走 MinerUParser（优先级最高）
+    # 注：MinerU 为远程服务，失败时会直接抛异常（不做隐式降级）；需要回退请改本项为 tika-mixed
     pdf-provider: mineru
 
 

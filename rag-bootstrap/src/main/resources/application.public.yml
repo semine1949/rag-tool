@@ -152,3 +152,38 @@ spring:
             timeout-ms: 120000
             max-tokens: 4096
             page-max-tokens: 4096
+
+        # ==================== 文档解析服务（非模型，走自有 HTTP 端点） ====================
+        # MinerU 官方 API（精准解析）：PDF 的默认解析器，产出结构化 Markdown（含版面/表格/公式还原）。
+        # 上传接口传 modelName=minerU 时强制使用；PDF 默认也走此解析器（由 rag.parser.pdf-provider 控制）。
+        #
+        # 【使用前必读】api-key 需由你在 mineru.net「API 管理」页面创建 Token 后替换占位符，
+        #   否则调用会直接报「MinerU 凭证未配置」。Token 格式为 Bearer Token，此处只填 Token 本身。
+        # 【接口限制】文件 ≤ 200MB、≤ 200 页；上传链接有效期 24 小时；单账号每日 1000 页最高优先级额度。
+        # 【快速回退】若 MinerU 不可用，将 application.yml 的 rag.parser.pdf-provider 改为 tika-mixed 即可
+        #   回退到原有「Tika 文本 + 内嵌图 OCR + 扫描件逐页 OCR」链路，无需改代码。
+        mineru:
+          # PARSER = 文档解析类服务，区别于 OCR 图像识别模型；不参与 AiModelFactory 的模型实例创建
+          category: PARSER
+          protocol: OPENAI
+          # 官方 API 根地址（精准解析 API）
+          base-url: https://mineru.net
+          # TODO 必填：在 mineru.net「API 管理」页面创建 Token 后替换此项
+          api-key: your-mineru-api-key
+          # 逻辑名标识（MinerU 无模型 ID 概念，此处填服务名即可）
+          model-name: mineru
+          extensions:
+            # 模型版本：pipeline（默认，速度快）/ vlm（推荐，版面与公式还原更好）/ MinerU-HTML（HTML 专用）
+            model-version: vlm
+            # 文档语言（ch / en 等），仅对 pipeline、vlm 有效
+            language: ch
+            # 是否开启公式识别（仅对 pipeline、vlm 有效）
+            enable-formula: true
+            # 是否开启表格识别（仅对 pipeline、vlm 有效）
+            enable-table: true
+            # 单次 HTTP 请求超时（毫秒），覆盖申请链接 / 上传 / 单次轮询 / 下载结果包
+            timeout-ms: 60000
+            # 轮询间隔（毫秒）：两次查询解析状态之间的等待时间
+            poll-interval-ms: 5000
+            # 最大轮询次数：与 poll-interval-ms 共同构成总等待上限（5000 × 120 = 10 分钟）
+            max-poll-count: 120

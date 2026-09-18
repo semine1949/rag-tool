@@ -5,6 +5,8 @@ import com.rag.auth.mapper.*;
 import com.rag.auth.service.*;
 import com.rag.interceptor.JwtAuthInterceptor;
 import com.rag.common.chunker.ChunkStrategyFactory;
+import com.rag.common.client.MinerUClient;
+import com.rag.common.client.MinerUOptions;
 import com.rag.common.client.OpenAiClient;
 import com.rag.config.factory.VectorStoreRegistry;
 import com.rag.config.properties.AiModelProperties;
@@ -148,6 +150,76 @@ public class RagCoreConfig implements WebMvcConfigurer {
                                    long timeoutMs, int maxTokens, int pageMaxTokens) {
     }
 
+    /** MinerU 解析服务在 {@code spring.ai.platform.models} 中的逻辑名（与 application.public.yml 一致） */
+    private static final String MINERU_MODEL_LOGICAL_NAME = "mineru";
+
+    /** MinerU 单次 HTTP 超时默认值（毫秒），模型未配置 extensions.timeout-ms 时生效 */
+    private static final long DEFAULT_MINERU_TIMEOUT_MS = 60_000L;
+
+    /** MinerU 轮询间隔默认值（毫秒），模型未配置 extensions.poll-interval-ms 时生效 */
+    private static final long DEFAULT_MINERU_POLL_INTERVAL_MS = 5_000L;
+
+    /** MinerU 最大轮询次数默认值，与轮询间隔共同构成总等待上限（默认 5s × 120 = 10 分钟） */
+    private static final int DEFAULT_MINERU_MAX_POLL_COUNT = 120;
+
+    /** MinerU 模型版本默认值（vlm 对版面与公式的还原效果更好） */
+    private static final String DEFAULT_MINERU_MODEL_VERSION = "vlm";
+
+    /** MinerU 文档语言默认值 */
+    private static final String DEFAULT_MINERU_LANGUAGE = "ch";
+
+    /**
+     * 读取 MinerU 解析服务的配置项，并封装为 {@link MinerUOptions} 值对象。
+     * <p>
+     * 配置统一声明在 {@code application.public.yml} 的
+     * {@code spring.ai.platform.models.mineru}（含 {@code extensions} 运行参数），
+     * 本方法负责取值并按需回退默认值（配置缺失仅降级，不阻断启动）。
+     * </p>
+     * <p>
+     * 返回值直接注入 {@link com.rag.common.client.MinerUClient} 并由其持有，
+     * 使解析器构造器与方法签名只需接收数据参数。
+     * </p>
+     *
+     * @return MinerU 配置参数快照
+     */
+    private MinerUOptions resolveMineruOptions() {
+        AiModelProperties.ModelConfig cfg = aiModelProperties == null || aiModelProperties.getModels() == null
+                ? null : aiModelProperties.getModels().get(MINERU_MODEL_LOGICAL_NAME);
+        if (cfg == null) {
+            log.warn("未找到 MinerU 配置 spring.ai.platform.models.{}, 使用默认运行参数", MINERU_MODEL_LOGICAL_NAME);
+            return new MinerUOptions("", "", DEFAULT_MINERU_MODEL_VERSION, DEFAULT_MINERU_LANGUAGE,
+                    true, true, DEFAULT_MINERU_TIMEOUT_MS,
+                    DEFAULT_MINERU_POLL_INTERVAL_MS, DEFAULT_MINERU_MAX_POLL_COUNT);
+        }
+        String baseUrl = cfg.getBaseUrl() == null ? "" : cfg.getBaseUrl();
+        String apiKey = cfg.getApiKey() == null ? "" : cfg.getApiKey();
+        String modelVersion = cfg.getExtensionString("model-version", DEFAULT_MINERU_MODEL_VERSION);
+        String language = cfg.getExtensionString("language", DEFAULT_MINERU_LANGUAGE);
+        boolean enableFormula = !"false".equalsIgnoreCase(cfg.getExtensionString("enable-formula", "true"));
+        boolean enableTable = !"false".equalsIgnoreCase(cfg.getExtensionString("enable-table", "true"));
+        long timeoutMs = cfg.getExtensionLong("timeout-ms", DEFAULT_MINERU_TIMEOUT_MS);
+        long pollIntervalMs = cfg.getExtensionLong("poll-interval-ms", DEFAULT_MINERU_POLL_INTERVAL_MS);
+        int maxPollCount = cfg.getExtensionInt("max-poll-count", DEFAULT_MINERU_MAX_POLL_COUNT);
+
+        MinerUOptions options = new MinerUOptions(baseUrl, apiKey, modelVersion, language,
+                enableFormula, enableTable, timeoutMs, pollIntervalMs, maxPollCount);
+        // 日志由 MinerUOptions.toString() 输出，已对 api-key 做脱敏
+        log.info("MinerU 配置: logicalName={}, {}", MINERU_MODEL_LOGICAL_NAME, options);
+        return options;
+    }
+
+    /**
+     * MinerU 客户端 Bean。
+     * <p>配置在构造期注入一次并全程复用——这是「参数封装」策略的落地：
+     * 解析器（每个文件 new 一次）只需接收该客户端与文件两个参数。</p>
+     *
+     * @return MinerU 官方 API v4 客户端
+     */
+    @Bean
+    public MinerUClient mineruClient() {
+        return new MinerUClient(resolveMineruOptions());
+    }
+
     /**
      * PDF 解析器提供方：{@code mineru}（默认）或 {@code tika-mixed}。
      * <p>用于灰度与快速回退：当 MinerU 未就绪或异常时，将配置切换为 tika-mixed 即可
@@ -157,7 +229,7 @@ public class RagCoreConfig implements WebMvcConfigurer {
     private String pdfProvider;
 
     @Bean
-    public DocumentParseFactory documentParseFactory(OpenAiClient openAiClient) {
+    public DocumentParseFactory documentParseFactory(OpenAiClient openAiClient, MinerUClient mineruClient) {
         Map<com.rag.common.enums.FileTypeEnum, Function<File, DocumentReader>> suppliers =
                 new EnumMap<>(com.rag.common.enums.FileTypeEnum.class);
 
@@ -176,8 +248,9 @@ public class RagCoreConfig implements WebMvcConfigurer {
                         ocr.timeoutMs(), ocr.maxTokens(), f);
         // 策略4：Excel → 智能表格解析
         Function<File, DocumentReader> excelReader = f -> new ExcelParser(f);
-        // 策略5：MinerU → PDF 默认解析器（骨架），亦作为 modelName=minerU 时的强制覆盖器
-        Function<File, DocumentReader> mineruReader = f -> new MinerUParser(f);
+        // 策略5：MinerU → PDF 默认解析器（远程 MinerU 官方 API），亦作为 modelName=minerU 时的强制覆盖器
+        // 注：配置参数已封装在 MinerUClient 持有的 MinerUOptions 中，故此处仅传「客户端 + 文件」两项
+        Function<File, DocumentReader> mineruReader = f -> new MinerUParser(mineruClient, f);
 
         // 文本类型：TXT / MD / MARKDOWN / HTML / HTM
         suppliers.put(com.rag.common.enums.FileTypeEnum.TXT, tikaReader);
